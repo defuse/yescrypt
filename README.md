@@ -15,6 +15,17 @@ Here are some useful yescrypt and scrypt links:
 - [Colin Percival's scrypt paper](https://www.tarsnap.com/scrypt/scrypt.pdf)
 - [The scrypt Internet-Draft](https://tools.ietf.org/html/draft-josefsson-scrypt-kdf-02)
 
+Optimization
+---------------
+
+Currently, none of the implementations are optimized.
+
+Using a non-optimized implementation in production is a security weakness. This
+is because you are forced to use weaker parameters than you could use use with
+an optimized implementation, and therefore the attacker has more of an
+advantage.
+
+Use an optimized native implementation if possible.
 
 Audit Status
 ---------------
