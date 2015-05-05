@@ -191,7 +191,7 @@ abstract class Scrypt {
         if (!is_int($int) || !is_int($rot) || $rot <= 0 || $rot >= 32) {
             die('Bad parameters to rotate_int32');
         }
-        return (($int << $rot) | (($int >> (32 - $rot)) /*& (pow(2, $rot) - 1)*/)) & 0xffffffff;
+        return (($int << $rot) | (($int >> (32 - $rot)) & (pow(2, $rot) - 1))) & 0xffffffff;
     }
     
 }
