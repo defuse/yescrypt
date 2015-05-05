@@ -107,9 +107,6 @@ abstract class Scrypt {
         $y = array_fill(0, 2*$r, 0);
     
         for ($i = 0; $i <= 2*$r - 1; $i++) {
-            $y[$i] = 0;
-        }
-        for ($i = 0; $i <= 2*$r - 1; $i++) {
             $t = $x ^ $B[$i];
             $x = self::salsa20_8_core_binary($t);
             if ($i % 2 == 0) {
