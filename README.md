@@ -37,5 +37,5 @@ Reporting Security Bugs
 -------------------------
 
 Please disclose bugs publicly by opening an issue on GitHub. If you need to
-disclose privately for some reason, you can find my contact information
-[here](https://defuse.ca/contact.htm).
+disclose privately for some reason, or don't have a GitHub account, you can find
+my contact information [here](https://defuse.ca/contact.htm).
