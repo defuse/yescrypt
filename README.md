@@ -21,9 +21,8 @@ Optimization
 Currently, none of the implementations are optimized.
 
 Using a non-optimized implementation in production is a security weakness. This
-is because you are forced to use weaker parameters than you could use use with
-an optimized implementation, and therefore the attacker has more of an
-advantage.
+is because you are forced to use weaker parameters than you could have with an
+optimized implementation, and therefore the attacker has more of an advantage.
 
 Use an optimized native implementation if possible.
 
