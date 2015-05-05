@@ -183,8 +183,8 @@ abstract class Scrypt {
     }
 
     /*
-     * Rotates a PHP integer $int right by $rot as though it were a 32-bit integer.
-     * Assumes PHP integers are at least 32 bits.
+     * Rotates a PHP integer $int left by $rot as though it were a 32-bit
+     * integer. Assumes PHP integers are at least 32 bits.
      */
     public static function R($int, $rot)
     {
