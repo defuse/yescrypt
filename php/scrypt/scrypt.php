@@ -18,7 +18,7 @@
  *    2^31 - 1 are floats.
  *  - The same problem on 32-bit PHP creates a side channel that could leak
  *    a fast password verifier to an attacker on a shared system.
- *  - N must be <= 2^31 - 1, so the highest supported value is 2^30.
+ *  - N must be <= 2^31 - 1, so the highest supported value is N = 2^30.
  */
 
 // XXX : error handling with exceptions.
