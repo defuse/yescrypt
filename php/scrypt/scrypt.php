@@ -9,15 +9,14 @@
  * modification, are permitted.
  *
  * There's ABSOLUTELY NO WARRANTY, express or implied.
- *
  */
 
-if (PHP_INT_MAX < 2 * 4294967296) {
-    /* We need to take integers up to twice 2^32 then mod them. */
-    /* XXX: This might actually work with 32-bit PHP, but we have to check the
-        guarantees when numbers up to that value are represented by floats. */
-    die('Your integers are too small.');
-}
+//if (PHP_INT_MAX < 2 * 4294967296) {
+//    /* We need to take integers up to twice 2^32 then mod them. */
+//    /* XXX: This might actually work with 32-bit PHP, but we have to check the
+//        guarantees when numbers up to that value are represented by floats. */
+//    die('Your integers are too small.');
+//}
 
 // XXX : error handling
 
@@ -98,8 +97,6 @@ abstract class Scrypt {
             die('Bad parameters');
         }
     
-        // XXX: check each one's length.
-    
         $x = $B[2*$r - 1];
     
         /* If we don't do this, it will be an associative array, and the implode()
@@ -107,6 +104,9 @@ abstract class Scrypt {
         $y = array_fill(0, 2*$r, 0);
     
         for ($i = 0; $i <= 2*$r - 1; $i++) {
+            if (self::our_strlen($B[$i]) != 64) {
+                die('Bad parameters.');
+            }
             $t = $x ^ $B[$i];
             $x = self::salsa20_8_core_binary($t);
             if ($i % 2 == 0) {
@@ -120,12 +120,13 @@ abstract class Scrypt {
 
     public static function salsa20_8_core_binary($in)
     {
-        // XXX: check input is 64-byte string.
-        $input_ints = array();
+        if (self::our_strlen($in) != 64) {
+            die('Bad parameters');
+        }
         $output_ints = array();
+        $input_ints = str_split($in, 4);
         for ($i = 0; $i < 16; $i++) {
-            // XXX slow
-            $input_ints[$i] = unpack("V", substr($in, $i*4, 4))[1];
+            $input_ints[$i] = unpack("V", $input_ints[$i])[1];
             $output_ints[$i] = 0;
         }
         self::salsa20_8_core_ints($input_ints, $output_ints);
@@ -190,6 +191,24 @@ abstract class Scrypt {
         }
         return (($int << $rot) | (($int >> (32 - $rot)) & (pow(2, $rot) - 1))) & 0xffffffff;
     }
-    
+
+    /*
+     * We need these strlen() and substr() functions because when
+     * 'mbstring.func_overload' is set in php.ini, the standard strlen() and
+     * substr() are replaced by mb_strlen() and mb_substr().
+     */
+
+    private static function our_strlen($str)
+    {
+        if (function_exists('mb_strlen')) {
+            $length = mb_strlen($str, '8bit');
+            if ($length === FALSE) {
+                throw new CannotPerformOperationException();
+            }
+            return $length;
+        } else {
+            return strlen($str);
+        }
+    }
 }
 
