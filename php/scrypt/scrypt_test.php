@@ -22,7 +22,7 @@ $output_binary = Scrypt::salsa20_8_core_binary($input_binary);
 echo bin2hex($output_binary) . "\n";
 echo "$output\n";
 
-$scrypt = Scrypt::calculate("", "", 16, 1, 1, 64);
+$scrypt = Scrypt::calculate("", "", 4, 1, 1, 64);
 echo bin2hex($scrypt) . "\n";
 
 die();

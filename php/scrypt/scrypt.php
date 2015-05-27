@@ -11,20 +11,26 @@
  * There's ABSOLUTELY NO WARRANTY, express or implied.
  */
 
-//if (PHP_INT_MAX < 2 * 4294967296) {
-//    /* We need to take integers up to twice 2^32 then mod them. */
-//    /* XXX: This might actually work with 32-bit PHP, but we have to check the
-//        guarantees when numbers up to that value are represented by floats. */
-//    die('Your integers are too small.');
-//}
+/*
+ * LIMITATIONS:
+ *  - On 32-bit PHP with non-IEEE 754 floating point, the results may not be
+ *    correct, as for fast addition modulo 2^32 PHP, intermediate values above
+ *    2^31 - 1 are floats.
+ *  - The same problem on 32-bit PHP creates a side channel that could leak
+ *    a fast password verifier to an attacker on a shared system.
+ *  - N must be <= 2^31 - 1, so the highest supported value is 2^30.
+ */
 
-// XXX : error handling
+// XXX : error handling with exceptions.
 
 abstract class Scrypt {
 
-    public static function calculate($password, $salt, $N, $r, $p, $dkLen)
+    public static function calculate($password, $salt, $lgN, $r, $p, $dkLen)
     {
-        // XXX be more defensive (overflow)
+        if ($lgN < 0 || $lgN > 30 || $lgN > 128 * $r / 8) {
+            die('lgN is too big.');
+        }
+
         $bytes = hash_pbkdf2('sha256', $password, $salt, 1, $p * 128 * $r, true);
     
         $B = array();
@@ -33,7 +39,7 @@ abstract class Scrypt {
         }
     
         for ($i = 0; $i <= $p - 1; $i++) {
-            $B[$i] = self::scryptROMix($r, $B[$i], $N);
+            $B[$i] = self::scryptROMix($r, $B[$i], 1 << $lgN);
         }
     
         $new_salt = "";
@@ -52,9 +58,6 @@ abstract class Scrypt {
      */
     public static function scryptROMix($r, $B, $N)
     {
-        // XXX: upper bound on N (yes it actually matters).
-        // XXX: check N is a power of 2.
-        // XXX: check the other shit
         if (!is_int($r) || $r <= 0 || !is_array($B) || count($B) != 2*$r || !is_int($N) || $N <= 1) {
             die('Bad parameters');
         }
@@ -68,7 +71,9 @@ abstract class Scrypt {
     
         $t = array();
         for ($i = 0; $i <= $N - 1; $i++) {
-            $j = self::integerify($r, $x) % $N; // & ($N - 1);
+            // On 32-bit PHP, integerify() can return a negative value here, but
+            // the & will do the right thing (% $N won't).
+            $j = self::integerify($r, $x) & ($N - 1);
             for ($k = 0; $k <= 2*$r - 1; $k++) {
                 $t[$k] = $x[$k] ^ $v[$j][$k];
             }
@@ -78,9 +83,12 @@ abstract class Scrypt {
         return $x;
     }
 
+    /*
+     * Interprets $B as a little-endian 32-bit integer.
+     * NOTE: This may return negative values on 32-bit PHP!
+     */
     public static function integerify($r, $B)
     {
-        // XXX: this isn't the full range (doc limitation)
         $last_block = $B[2*$r - 1];
         return unpack("V", $last_block)[1];
     }
@@ -197,7 +205,6 @@ abstract class Scrypt {
      * 'mbstring.func_overload' is set in php.ini, the standard strlen() and
      * substr() are replaced by mb_strlen() and mb_substr().
      */
-
     private static function our_strlen($str)
     {
         if (function_exists('mb_strlen')) {
