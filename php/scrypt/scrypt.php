@@ -21,14 +21,14 @@
  *  - N must be <= 2^31 - 1, so the highest supported value is N = 2^30.
  */
 
-// XXX : error handling with exceptions.
+class ScryptException extends Exception { }
 
 abstract class Scrypt {
 
     public static function calculate($password, $salt, $lgN, $r, $p, $dkLen)
     {
         if ($lgN < 0 || $lgN > 30 || $lgN > 128 * $r / 8) {
-            die('lgN is too big.');
+            throw new ScryptException("lgN is negative or too big.");
         }
 
         $bytes = hash_pbkdf2('sha256', $password, $salt, 1, $p * 128 * $r, true);
@@ -59,7 +59,7 @@ abstract class Scrypt {
     public static function scryptROMix($r, $B, $N)
     {
         if (!is_int($r) || $r <= 0 || !is_array($B) || count($B) != 2*$r || !is_int($N) || $N <= 1) {
-            die('Bad parameters');
+            throw new ScryptException("bad parameters to scryptROMix");
         }
     
         $v = array();
@@ -102,7 +102,7 @@ abstract class Scrypt {
     public static function scryptBlockMix($r, $B)
     {
         if (!is_int($r) || $r <= 0 || !is_array($B) || count($B) != 2*$r) {
-            die('Bad parameters');
+            throw new ScryptException("bad parameters to scryptBlockMix");
         }
     
         $x = $B[2*$r - 1];
@@ -113,7 +113,7 @@ abstract class Scrypt {
     
         for ($i = 0; $i <= 2*$r - 1; $i++) {
             if (self::our_strlen($B[$i]) != 64) {
-                die('Bad parameters.');
+                throw new ScryptException("block is not 64 bytes in scryptBlockMix");
             }
             $t = $x ^ $B[$i];
             $x = self::salsa20_8_core_binary($t);
@@ -129,7 +129,7 @@ abstract class Scrypt {
     public static function salsa20_8_core_binary($in)
     {
         if (self::our_strlen($in) != 64) {
-            die('Bad parameters');
+            throw new ScryptException("Block passed to salsa20_8_core_binary is not 64 bytes");
         }
         $output_ints = array();
         $input_ints = str_split($in, 4);
@@ -153,13 +153,13 @@ abstract class Scrypt {
     public static function salsa20_8_core_ints($in, & $out)
     {
         if (!is_array($in) || count($in) != 16 || !is_array($out) || count($out) != 16) {
-            die('Bad parameters');
+            throw new ScryptException("bad parameters to salsa20_8_core_ints");
         }
     
         $x = array();
         for ($i = 0; $i < 16; $i++) {
             if (!is_int($in[$i]) || !is_int($out[$i])) {
-                die('Bad parameters');
+                throw new ScryptException("bad value in array passed to salsa20_8_core_ints");
             }
             $x[$i] = $in[$i];
         }
@@ -195,7 +195,7 @@ abstract class Scrypt {
     public static function R($int, $rot)
     {
         if (!is_int($int) || !is_int($rot) || $rot <= 0 || $rot >= 32) {
-            die('Bad parameters to rotate_int32');
+            throw new ScryptException("bad parameters given to R");
         }
         return (($int << $rot) | (($int >> (32 - $rot)) & (pow(2, $rot) - 1))) & 0xffffffff;
     }
