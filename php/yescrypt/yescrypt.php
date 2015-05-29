@@ -1,24 +1,12 @@
 <?php
 
 /*
- * This is a VERY SLOW reference implementation of plain scrypt. Don't use it!
- *
  * This software is Copyright (c) 2015 Taylor Hornby <havoc@defuse.ca>,
  * and it is hereby released to the general public under the following terms:
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted.
  *
  * There's ABSOLUTELY NO WARRANTY, express or implied.
- */
-
-/*
- * LIMITATIONS:
- *  - On 32-bit PHP with non-IEEE 754 floating point, the results may not be
- *    correct, as for fast addition modulo 2^32 PHP, intermediate values above
- *    2^31 - 1 are floats.
- *  - The same problem on 32-bit PHP creates a side channel that could leak
- *    a fast password verifier to an attacker on a shared system.
- *  - N must be <= 2^31 - 1, so the highest supported value is N = 2^30.
  */
 
 class YescryptException extends Exception { }
