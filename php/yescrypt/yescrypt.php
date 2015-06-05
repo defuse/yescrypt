@@ -9,66 +9,405 @@
  * There's ABSOLUTELY NO WARRANTY, express or implied.
  */
 
+/* Tunable. */
+define('YESCRYPT_PWXSIMPLE', 2);
+define('YESCRYPT_PWXGATHER', 4);
+define('YESCRYPT_PWXROUNDS', 6);
+define('YESCRYPT_SWIDTH', 8);
+
+/* Don't touch these. */
+define('YESCRYPT_PWXBYTES', YESCRYPT_PWXGATHER * YESCRYPT_PWXSIMPLE * 8);
+define('YESCRYPT_PWXWORDS', (YESCRYPT_PWXBYTES / 4));
+define('YESCRYPT_SBYTES', 2 * (1 << YESCRYPT_SWIDTH) * YESCRYPT_PWXSIMPLE * 8);
+define('YESCRYPT_SWORDS', YESCRYPT_SBYTES / 4);
+define('YESCRYPT_SMASK', ((1 << YESCRYPT_SWIDTH) - 1) * YESCRYPT_PWXSIMPLE * 8);
+define('YESCRYPT_RMIN', (int)floor((YESCRYPT_PWXBYTES + 127) / 128));
+
+/* Flags. */
+define('YESCRYPT_RW', 1);
+define('YESCRYPT_WORM', 2);
+
 class YescryptException extends Exception { }
 
 abstract class Yescrypt {
 
-    public static function calculate($password, $salt, $lgN, $r, $p, $dkLen)
+    public static function calculate($password, $salt, $lgN, $r, $p, $t, $flags, $dkLen)
     {
         if ($lgN < 0 || $lgN > 30 || $lgN > 128 * $r / 8) {
             throw new YescryptException("lgN is negative or too big.");
         }
 
+        // TODO: the YESCRYPT_RW stuff for large N/p? (see scrypt-ref.c)
+
+        if ($flags !== 0) {
+            $password = hash_hmac('sha256', $password, "yescrypt", true);
+        }
+
         $bytes = hash_pbkdf2('sha256', $password, $salt, 1, $p * 128 * $r, true);
     
         $B = array();
-        for ($i = 0; $i <= $p - 1; $i++) {
+        for ($i = 0; $i < $p; $i++) {
             $B[$i] = str_split( substr($bytes, $i * 128 * $r, 128 * $r), 64 );
         }
+
+        if ($flags !== 0) {
+            $password = substr($bytes, 0, 32);
+        }
     
-        for ($i = 0; $i <= $p - 1; $i++) {
-            $B[$i] = self::scryptROMix($r, $B[$i], 1 << $lgN);
+        if (($flags & YESCRYPT_RW) !== 0) {
+            self::sMix(1 << $lgN, $r, $t, $p, $B, $flags);
+        } else {
+            for ($i = 0; $i < $p; $i++) {
+                $B0 = array($B[$i]);
+                self::sMix(1 << $lgN, $r, $t, 1, $B0, $flags);
+                $B[$i] = $B0[0];
+            }
         }
     
         $new_salt = "";
         for ($i = 0; $i <= $p - 1; $i++) {
             $new_salt .= implode('', $B[$i]);
         }
+
+        $result = hash_pbkdf2('sha256', $password, $new_salt, 1, $dkLen, true);
+
+        if ($flags !== 0 && $dkLen < 32) {
+            $huh = hash_pbkdf2('sha256', $password, $new_salt, 1, 32, true);
+        } else {
+            $huh = substr($result, 0, 32);
+        }
     
-        return hash_pbkdf2('sha256', $password, $new_salt, 1, $dkLen, true);
+        if ($flags !== 0) {
+            $clientkey = hash_hmac('sha256', "Client Key", $huh, true);
+            $storedkey = hash('sha256', $clientkey, true);
+            for ($i = 0; $i < min(32, $dkLen); $i++) {
+                $result[$i] = $storedkey[$i];
+            }
+        }
+
+        return $result;
     }
 
-    /*
-     * The scryptROMix function.
-     * $r is the block size parameter.
-     * $B is a 2*r entry array of 64-byte strings.
-     * $N is the CPU/memory cost parameter. Must be a power of two larger than 1.
-     */
-    public static function scryptROMix($r, $B, $N)
+    public static function fNloop($N, $t, $flags)
     {
-        if (!is_int($r) || $r <= 0 || !is_array($B) || count($B) != 2*$r || !is_int($N) || $N <= 1) {
-            throw new YescryptException("bad parameters to scryptROMix");
-        }
-    
-        $v = array();
-        $x = $B;
-        for ($i = 0; $i <= $N - 1; $i++) {
-            $v[$i] = $x;
-            $x = self::scryptBlockMix($r, $x);
-        }
-    
-        $t = array();
-        for ($i = 0; $i <= $N - 1; $i++) {
-            // On 32-bit PHP, integerify() can return a negative value here, but
-            // the & will do the right thing (% $N won't).
-            $j = self::integerify($r, $x) & ($N - 1);
-            for ($k = 0; $k <= 2*$r - 1; $k++) {
-                $t[$k] = $x[$k] ^ $v[$j][$k];
+        if (($flags & YESCRYPT_RW) !== 0) {
+            switch ($t) {
+                case 0:
+                    return floor(($N + 2) / 3);
+                case 1:
+                    return floor((2 * $N + 2) / 3);
+                default:
+                    return ($t - 1) * $N;
             }
-            $x = self::scryptBlockMix($r, $t);
+        } elseif (($flags & YESCRYPT_WORM) !== 0) {
+            switch ($t) {
+                case 0:
+                    return $N;
+                case 1:
+                    return $N + floor( ($N + 1) / 2 );
+                default:
+                    return $t * $N;
+            }
+        } else {
+            return $N;
         }
-    
+        // We've omitted the rounding up to the next even integer here.
+        // That gets done in sMix().
+    }
+
+    public static function p2floor($x)
+    {
+        while (($y = $x & ($x - 1)) !== 0) {
+            $x = $y;
+        }
         return $x;
+    }
+
+    public static function wrap($x, $i)
+    {
+        $n = self::p2floor($i);
+        return ($x & ($n - 1)) + ($i - $n);
+    }
+
+    public static function sMix($N, $r, $t, $p, & $pbkdf2_blocks, $flags)
+    {
+        $sboxes = array();
+        $V = array();
+        $output = null;
+
+        $n = floor($N / $p);
+        $Nloop_all = self::fNloop($n, $t, $flags);
+        if (($flags & YESCRYPT_RW) !== 0) {
+            $Nloop_rw = (int)floor($Nloop_all / $p);
+        } else { 
+            $Nloop_rw = 0;
+        }
+        $n = $n - ($n & 1);
+        $Nloop_all = $Nloop_all + ($Nloop_all & 1);
+        $Nloop_rw = $Nloop_rw - ($Nloop_rw & 1);
+        for ($i = 0; $i < $p; $i++) {
+            $v = $i * $n;
+            if ($i === $p - 1) {
+                $n = $N - $v;
+            }
+            $w = $v + $n - 1;
+            $sboxes[$i] = null;
+            if (($flags & YESCRYPT_RW) !== 0) {
+                $x = array($pbkdf2_blocks[$i][0], $pbkdf2_blocks[$i][1]);
+                self::SMix1(1, $x, YESCRYPT_SBYTES/128, $sboxes[$i], $flags & ~YESCRYPT_RW, null);
+                for ($k = 0; $k < count($sboxes[$i]); $k++) {
+                    $sboxes[$i][$k] = implode($sboxes[$i][$k]);
+                }
+                $sboxes[$i] = implode($sboxes[$i]);
+                $pbkdf2_blocks[$i][0] = $x[0];
+                $pbkdf2_blocks[$i][1] = $x[1];
+            }
+            self::SMix1($r, $pbkdf2_blocks[$i], $n, $output, $flags, $sboxes[$i]);
+            for ($j = $v; $j <= $w; $j++) {
+                $V[$j] = $output[$j - $v];
+            }
+            self::SMix2($r, $pbkdf2_blocks[$i], self::p2floor($n), $Nloop_rw, $output, $flags, $sboxes[$i]);
+            for ($j = $v; $j <= $w; $j++) {
+                $V[$j] = $output[$j - $v];
+            }
+        }
+        for ($i = 0; $i < $p; $i++) {
+            self::SMix2($r, $pbkdf2_blocks[$i], $N, $Nloop_all - $Nloop_rw, $V, $flags & ~YESCRYPT_RW, $sboxes[$i]);
+        }
+    }
+
+    public static function sMix1($r, & $input_block, $N, & $out_seq_write_memory, $flags, $sbox)
+    {
+        $x = $input_block;
+
+        self::simd_shuffle($x);
+
+        $v = array();
+        for ($i = 0; $i < $N; $i++) {
+            $v[$i] = $x;
+            if (false) {
+                // TODO: ROM support
+            } elseif (($flags & YESCRYPT_RW) !== 0 && $i > 1) {
+                $j = self::wrap(self::integerify($r, $x), $i);
+                for ($k = 0; $k < 2 * $r; $k++) {
+                    $x[$k] ^= $v[$j][$k];
+                }
+            }
+            if (is_null($sbox)) {
+                self::blockmix_salsa8($r, $x);
+            } else {
+                self::blockmix_pwxform($r, $x, $sbox);
+            }
+        }
+
+        self::simd_unshuffle($x);
+
+        $input_block = $x;
+        $out_seq_write_memory = $v;
+    }
+
+    public static function sMix2($r, & $input_block, $N, $Nloop, & $seq_write_memory, $flags, $sbox)
+    {
+        $x = $input_block;
+        $v = $seq_write_memory;
+
+        self::simd_shuffle($x);
+
+        for ($i = 0; $i < $Nloop; $i++) {
+            if (false) {
+                // TODO: ROM support
+            } else {
+                $j = self::integerify($r, $x) & ($N - 1);
+                for ($k = 0; $k < 2 * $r; $k++) {
+                    $x[$k] ^= $v[$j][$k];
+                }
+                if (($flags & YESCRYPT_RW) !== 0) {
+                    $v[$j] = $x;
+                }
+            }
+            if (is_null($sbox)) {
+                self::blockmix_salsa8($r, $x);
+            } else {
+                self::blockmix_pwxform($r, $x, $sbox);
+            }
+        }
+
+        self::simd_unshuffle($x);
+
+        $input_block = $x;
+        $seq_write_memory = $v;
+    }
+
+    public static function blockmix_pwxform($r, & $B, $sbox)
+    {
+        $flat = implode('', $B);
+
+        $r1 = (int)floor(128 * $r / YESCRYPT_PWXBYTES);
+        $X = substr($flat, ($r1 - 1) * YESCRYPT_PWXBYTES, YESCRYPT_PWXBYTES);
+        for ($i = 0; $i < $r1; $i++) {
+            if ($r1 > 1) {
+                $X ^= substr($flat, $i * YESCRYPT_PWXBYTES, YESCRYPT_PWXBYTES);
+            }
+            self::pwxform($X, $sbox);
+            for ($j = 0; $j < YESCRYPT_PWXBYTES; $j++) {
+                $flat[$i * YESCRYPT_PWXBYTES + $j] = $X[$j];
+            }
+        }
+
+        $i = (int)floor(($r1 - 1) * YESCRYPT_PWXBYTES / 64);
+
+        $Bi = substr($flat, $i * 64, 64);
+        $Bi = self::salsa20_8_core_binary($Bi);
+        for ($j = 0; $j < 64; $j++) {
+            $flat[$i * 64 + $j] = $Bi[$j];
+        }
+
+        $Bim1 = $Bi;
+        for ($i = $i + 1; $i < 2 * $r; $i++) {
+            $Bi = substr($flat, $i * 64, 64);
+            $Bim1 = self::salsa20_8_core_binary($Bi ^ $Bim1);
+            for ($j = 0; $j < 64; $j++) {
+                $flat[$i * 64 + $j] = $Bim1[$j];
+            }
+        }
+        
+        $B = str_split($flat, 64);
+    }
+
+    public static function pwxform(& $b, $sbox)
+    {
+        // Split into 32-bit integers for easy access.
+        $ints = array();
+        $split = str_split($b, 4);
+        for ($i = 0; $i < count($split); $i++) {
+            // XXX 64-bit only (negative values above 2^31)
+            $ints[$i] = unpack("V", $split[$i])[1];
+        }
+
+        // Split $sbox into 64-bit integers.
+        $sbox_ints = array();
+        $split = str_split($sbox, 8);
+        for ($i = 0; $i < count($split); $i++) {
+            // XXX: 64-bit only.
+            $sbox_ints[$i] = unpack("P", $split[$i])[1];
+        }
+
+        $LO = 0;
+        $HI = 1;
+
+        for ($i = 0; $i < YESCRYPT_PWXROUNDS; $i++) {
+            for ($j = 0; $j < YESCRYPT_PWXGATHER; $j++) {
+                $xl = $ints[2 * $j * YESCRYPT_PWXSIMPLE + $LO];
+                $xh = $ints[2 * $j * YESCRYPT_PWXSIMPLE + $HI];
+                $p0 = (int)floor(($xl & YESCRYPT_SMASK) / (YESCRYPT_PWXSIMPLE * 8));
+                $p1 = (int)floor(($xh & YESCRYPT_SMASK) / (YESCRYPT_PWXSIMPLE * 8));
+
+                for ($k = 0; $k < YESCRYPT_PWXSIMPLE; $k++) {
+                    $BjkLO = $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $LO];
+                    $BjkHI = $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $HI];
+
+
+                    $S0p0k = $sbox_ints[$p0 * YESCRYPT_PWXSIMPLE + $k];
+                    $S1p1k = $sbox_ints[count($sbox_ints) / 2 + $p1 * YESCRYPT_PWXSIMPLE + $k];
+
+                    // MULTIPLICATION
+
+                    // Even 64-bit PHP can only represent values up to 2^63 - 1.
+                    // Anything higher will be converted to float, and we'll
+                    // lose precision. So we have to implement 32-to-64
+                    // multiplication ourselves.
+
+                    // Naive multiplication algorithm:
+                    // A * B = 2^32 h(A) h(B) + 2^16 h(A) l(B) + 2^16 h(B) l(A) + l(A) l(B)
+
+                    $hA = ($BjkHI >> 16) & 0xFFFF;
+                    $lA = $BjkHI & 0xFFFF;
+                    $hB = ($BjkLO >> 16) & 0xFFFF;
+                    $lB = $BjkLO & 0xFFFF;
+
+                    $NBjkLO = 0;
+                    $NBjkHI = 0;
+
+                    // Add in the first term: 2^32 h(A) h(B)
+                    $NBjkHI += $hA * $hB;
+
+                    // Add in the remaining terms: 2^16 h(A) l(B) + 2^16 h(B) + l(A) l(B)
+                    // This value won't be more than 2^49, so we don't have to
+                    // worry about overflow on 64-bit php. (XXX: 64-bit only).
+                    $acc = (($hA * $lB) << 16) + (($hB * $lA) << 16) + ($lA * $lB);
+                    // It's zero, so there will be no carry.
+                    $NBjkLO += $acc & 0xFFFFFFFF;
+                    $NBjkHI += ($acc >> 32) & 0xFFFFFFFF;
+
+                    // This shouldn't actually be necessary, but just in case.
+                    $NBjkHI &= 0xFFFFFFFF;
+
+                    // ADDITION
+                    $NBjkLO += $S0p0k & 0xFFFFFFFF;
+                    $carry = $NBjkLO >> 32;
+                    $NBjkLO &= 0xFFFFFFFF;
+
+                    $NBjkHI = ((($S0p0k >> 32) & 0xFFFFFFFF) +
+                              $carry +
+                              $NBjkHI) & 0xFFFFFFFF;
+
+                    // XOR
+                    $NBjkLO ^= $S1p1k & 0xFFFFFFFF;
+                    $NBjkHI ^= ($S1p1k >> 32) & 0xFFFFFFFF;
+
+                    $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $LO] = $NBjkLO;
+                    $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $HI] = $NBjkHI;
+                }
+            }
+        }
+
+        $new_b = "";
+        for ($i = 0; $i < count($ints); $i++) {
+            $new_b .= pack("V", $ints[$i]);
+        }
+
+        $b = $new_b;
+    }
+
+    public static function simd_shuffle(& $x)
+    {
+        for ($i = 0; $i < count($x); $i++) {
+            $x[$i] = self::simd_shuffle_block($x[$i]);
+        }
+    }
+
+    public static function simd_unshuffle(& $x)
+    {
+        for ($i = 0; $i < count($x); $i++) {
+            $x[$i] = self::simd_unshuffle_block($x[$i]);
+        }
+    }
+
+    public static function simd_shuffle_block($b)
+    {
+        if (self::our_strlen($b) !== 64) {
+            throw new YescryptException("Bad block size.");
+        }
+
+        $shuffled = "";
+        for ($i = 0; $i < 16; $i++) {
+            $shuffled .= substr($b, 4*(($i * 5) % 16), 4);
+        }
+
+        return $shuffled;
+    }
+
+    public static function simd_unshuffle_block($b)
+    {
+        if (self::our_strlen($b) !== 64) {
+            throw new YescryptException("Bad block size.");
+        }
+
+        $unshuffled = array_fill(0, 16, null);
+        for ($i = 0; $i < 16; $i++) {
+            $unshuffled[($i * 5) % 16] = substr($b, 4*$i, 4);
+        }
+        return implode('', $unshuffled);
     }
 
     /*
@@ -77,6 +416,8 @@ abstract class Yescrypt {
      */
     public static function integerify($r, $B)
     {
+        // XXX: for returning more than 32 bits, we'd need to deal with the SIMD
+        // shuffling here.
         $last_block = $B[2*$r - 1];
         return unpack("V", $last_block)[1];
     }
@@ -87,7 +428,7 @@ abstract class Yescrypt {
      * $B is a 2*r entry array of 64-byte strings.
      * Returns a 2*r entry array of 64-byte strings.
      */
-    public static function scryptBlockMix($r, $B)
+    public static function blockmix_salsa8($r, & $B)
     {
         if (!is_int($r) || $r <= 0 || !is_array($B) || count($B) != 2*$r) {
             throw new YescryptException("bad parameters to scryptBlockMix");
@@ -111,7 +452,7 @@ abstract class Yescrypt {
                 $y[$r + ($i - 1)/2] = $x;
             }
         }
-        return $y;
+        $B = $y;
     }
 
     public static function salsa20_8_core_binary($in)
@@ -119,6 +460,9 @@ abstract class Yescrypt {
         if (self::our_strlen($in) != 64) {
             throw new YescryptException("Block passed to salsa20_8_core_binary is not 64 bytes");
         }
+
+        $in = self::simd_unshuffle_block($in);
+
         $output_ints = array();
         $input_ints = str_split($in, 4);
         for ($i = 0; $i < 16; $i++) {
@@ -130,6 +474,9 @@ abstract class Yescrypt {
         for ($i = 0; $i < 16; $i++) {
             $out .= pack("V", $output_ints[$i]);
         }
+
+        $out = self::simd_shuffle_block($out);
+
         return $out;
     }
 
