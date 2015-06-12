@@ -10,7 +10,7 @@
  */
 
 /*
- * Compatibility: 64-bit PHP version 5.4 or greater.
+ * Compatibility: 64-bit PHP version 5.5.0 or greater.
  */
 
 /* Tunable. */
