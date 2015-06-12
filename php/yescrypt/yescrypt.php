@@ -31,15 +31,51 @@ class YescryptException extends Exception { }
 
 abstract class Yescrypt {
 
-    public static function calculate($password, $salt, $lgN, $r, $p, $t, $flags, $dkLen)
+    public static function calculate($password, $salt, $N, $r, $p, $t, $g, $flags, $dkLen)
     {
-        if ($lgN < 0 || $lgN > 30 || $lgN > 128 * $r / 8) {
-            throw new YescryptException("lgN is negative or too big.");
+        if (PHP_INT_SIZE < 8) {
+            throw new YescryptException("This implementation requires 64-bit integers.");
         }
+
+        if ($flags & ~(YESCRYPT_RW | YESCRYPT_WORM)) {
+            throw new YescryptException("Unknown flags.");
+        }
+
+        if ($flags === 0 && $t !== 0) {
+            throw new YescryptException("Can't use t > 0 without flags.");
+        }
+
+        if ($r * $p >= 1 << 30) {
+            throw new YescryptException("r * p is too big.");
+        }
+
+        if (($N & ($N - 1)) !== 0) {
+            throw new YescryptException("N is not a power of two.");
+        }
+
+        if ($N < 1) {
+            throw new YescryptException("N is too small.");
+        }
+
+        if ($r < 1) {
+            throw new YescryptException("r is too small.");
+        }
+
+        if ($p < 1) {
+            throw new YescryptException("p is too small.");
+        }
+
+        if ($g !== 0) {
+            throw new YescryptException("g > 0 is not supported yet.");
+        }
+
+        // TODO: finish the range checks (N, + different flag combos)
 
         // TODO: the YESCRYPT_RW stuff for large N/p? (see scrypt-ref.c)
 
         if ($flags !== 0) {
+            // Pre-hash to stop long passwords from being replacable by their
+            // SHA256 hash (a quirk of HMAC).
             $password = hash_hmac('sha256', $password, "yescrypt", true);
         }
 
@@ -55,11 +91,13 @@ abstract class Yescrypt {
         }
     
         if (($flags & YESCRYPT_RW) !== 0) {
-            self::sMix(1 << $lgN, $r, $t, $p, $B, $flags);
+            // New yescrypt paralellism (inside this call).
+            self::sMix($N, $r, $t, $p, $B, $flags);
         } else {
+            // Classic scrypt paralellism.
             for ($i = 0; $i < $p; $i++) {
                 $B0 = array($B[$i]);
-                self::sMix(1 << $lgN, $r, $t, 1, $B0, $flags);
+                self::sMix($N, $r, $t, 1, $B0, $flags);
                 $B[$i] = $B0[0];
             }
         }
