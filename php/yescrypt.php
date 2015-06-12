@@ -9,6 +9,10 @@
  * There's ABSOLUTELY NO WARRANTY, express or implied.
  */
 
+/*
+ * Compatibility: 64-bit PHP version 5.4 or greater.
+ */
+
 /* Tunable. */
 define('YESCRYPT_PWXSIMPLE', 2);
 define('YESCRYPT_PWXGATHER', 4);
