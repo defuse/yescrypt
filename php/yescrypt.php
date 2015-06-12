@@ -331,7 +331,9 @@ abstract class Yescrypt {
         $split = str_split($sbox, 8);
         for ($i = 0; $i < count($split); $i++) {
             // XXX: 64-bit only.
-            $sbox_ints[$i] = unpack("P", $split[$i])[1];
+            // We can't use "P" here because it's only in PHP 5.6.
+            $sbox_ints[$i] = unpack("V", substr($split[$i], 0, 4))[1];
+            $sbox_ints[$i] |= unpack("V", substr($split[$i], 4, 4))[1] << 32;
         }
 
         $LO = 0;
