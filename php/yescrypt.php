@@ -27,7 +27,7 @@ define('YESCRYPT_SWORDS', YESCRYPT_SBYTES / 4);
 define('YESCRYPT_SMASK', ((1 << YESCRYPT_SWIDTH) - 1) * YESCRYPT_PWXSIMPLE * 8);
 define('YESCRYPT_RMIN', (int)floor((YESCRYPT_PWXBYTES + 127) / 128));
 
-/* Flags. */
+/* Flags. Keep these the same as the reference implementation. */
 define('YESCRYPT_RW', 1);
 define('YESCRYPT_WORM', 2);
 
@@ -35,29 +35,53 @@ class YescryptException extends Exception { }
 
 abstract class Yescrypt {
 
+    /*
+     * WARNING: Calling this function may trigger a memory allocation error.
+     * Make sure to set an error handler to detect this case as per
+     * http://stackoverflow.com/a/8440791
+     */
     public static function calculate($password, $salt, $N, $r, $p, $t, $g, $flags, $dkLen)
     {
         if (PHP_INT_SIZE < 8) {
             throw new YescryptException("This implementation requires 64-bit integers.");
         }
 
-        if ($flags & ~(YESCRYPT_RW | YESCRYPT_WORM)) {
+        // TODO: use built-in exception classes where possible.
+
+        if (!is_int($flags) || ($flags & ~(YESCRYPT_RW | YESCRYPT_WORM)) !== 0) {
             throw new YescryptException("Unknown flags.");
         }
 
-        if ($flags === 0 && $t !== 0) {
-            throw new YescryptException("Can't use t > 0 without flags.");
+        if (!is_int($N)) {
+            throw new YescryptException("N is not an integer.");
+        }
+        if (!is_int($r)) {
+            throw new YescryptException("r is not an integer.");
+        }
+        if (!is_int($p)) {
+            throw new YescryptException("p is not an integer.");
         }
 
-        if ($r * $p >= 1 << 30) {
-            throw new YescryptException("r * p is too big.");
+        if (!is_int($t)) {
+            throw new YescryptException("t is not an integer.");
         }
 
+        if (!is_int($g)) {
+            throw new YescryptException("g is not an integer.");
+        }
+
+        if (!is_int($dkLen)) {
+            throw new YescryptException("dkLen is not an integer.");
+        }
+
+        // If $N is not a power of two, subtracting 1 will leave the leading
+        // one unchanged, and thus the & will be non-zero. The other direction
+        // is obvious.
         if (($N & ($N - 1)) !== 0) {
             throw new YescryptException("N is not a power of two.");
         }
 
-        if ($N < 1) {
+        if ($N <= 1) {
             throw new YescryptException("N is too small.");
         }
 
@@ -71,6 +95,16 @@ abstract class Yescrypt {
 
         if ($g !== 0) {
             throw new YescryptException("g > 0 is not supported yet.");
+        }
+
+        // The largest value computed is 128 * $r * $p, and we want that to fit
+        // into one of PHP's integers. Let's check if it overflows into a float.
+        if (!is_int($r * $p * 128)) {
+            throw new YescryptException("r * p is too big.");
+        }
+
+        if ($flags === 0 && $t !== 0) {
+            throw new YescryptException("Can't use t > 0 without flags.");
         }
 
         // TODO: finish the range checks (N, + different flag combos)
@@ -106,33 +140,44 @@ abstract class Yescrypt {
             }
         }
     
+        // DK <-- PBKDF2(P, B, 1, dkLen)
         $new_salt = "";
         for ($i = 0; $i <= $p - 1; $i++) {
             $new_salt .= implode('', $B[$i]);
         }
+        // Make sure we get at least 32 bytes.
+        $result = hash_pbkdf2('sha256', $password, $new_salt, 1, max($dkLen, 32), true);
 
-        $result = hash_pbkdf2('sha256', $password, $new_salt, 1, $dkLen, true);
-
-        if ($flags !== 0 && $dkLen < 32) {
-            $huh = hash_pbkdf2('sha256', $password, $new_salt, 1, 32, true);
-        } else {
-            $huh = substr($result, 0, 32);
-        }
-    
         if ($flags !== 0) {
-            $clientkey = hash_hmac('sha256', "Client Key", $huh, true);
+            // This is why we needed at least 32 bytes.
+            $client_value = substr($result, 0, 32);
+
+            $clientkey = hash_hmac('sha256', "Client Key", $client_value, true);
             $storedkey = hash('sha256', $clientkey, true);
+
+            // Update the first 32 bytes of the result.
             for ($i = 0; $i < min(32, $dkLen); $i++) {
                 $result[$i] = $storedkey[$i];
             }
         }
 
-        return $result;
+        // We might have gotten more than we needed to above, so truncate.
+        return substr($result, 0, $dkLen);
     }
 
     public static function fNloop($N, $t, $flags)
     {
+        /* +------+-----------------+-----------------+
+         * |      | Nloop           |                 |
+         * | t    | YESCRYPT_RW     | YESCRYPT_WORM   |
+         * +------+-----------------+-----------------+
+         * | 0    | (N+2)/3         | N               |
+         * | 1    | (2N + 2) / 3    | N + (N + 1) / 2 |
+         * | > 1  | (t - 1)*N       | t*N             |
+         * +------+-----------------+-----------------+
+         */
         if (($flags & YESCRYPT_RW) !== 0) {
+            // First column.
             switch ($t) {
                 case 0:
                     return floor(($N + 2) / 3);
@@ -142,6 +187,7 @@ abstract class Yescrypt {
                     return ($t - 1) * $N;
             }
         } elseif (($flags & YESCRYPT_WORM) !== 0) {
+            // Second column.
             switch ($t) {
                 case 0:
                     return $N;
@@ -151,22 +197,34 @@ abstract class Yescrypt {
                     return $t * $N;
             }
         } else {
+            // Without any flags, it's the same as scrypt.
             return $N;
         }
-        // We've omitted the rounding up to the next even integer here.
-        // That gets done in sMix().
+        /*
+         * Note that Nloop is supposed to be rounded up to the next even
+         * integer, to simplify optimized implementations. We don't do that here
+         * in this function, because it happens in sMix().
+         */
     }
 
+    /*
+     * Finds the largest power of 2 less than or equal to $x.
+     */
     public static function p2floor($x)
     {
+        // p2floor(i) = 2^(floor(log_2(i))).
         while (($y = $x & ($x - 1)) !== 0) {
             $x = $y;
         }
         return $x;
     }
 
+    /*
+     * Wraps $x to a value between 0 and $i - 1 (inclusive).
+     */
     public static function wrap($x, $i)
     {
+        // Wrap(x, i) = (x mod p2floor(i)) + (i - p2floor(i))
         $n = self::p2floor($i);
         return ($x & ($n - 1)) + ($i - $n);
     }
@@ -177,43 +235,87 @@ abstract class Yescrypt {
         $V = array();
         $output = null;
 
+        // n <- N / p
         $n = floor($N / $p);
+        // Nloop_all <- fNloop(n, t, flags)
         $Nloop_all = self::fNloop($n, $t, $flags);
+
+        // if YESCRYPT_RW flag is set
         if (($flags & YESCRYPT_RW) !== 0) {
+            // Nloop_rw <- Nloop_all / p
             $Nloop_rw = (int)floor($Nloop_all / $p);
         } else { 
+            // Nloop_rw <- 0
             $Nloop_rw = 0;
         }
+
+        // n <- n - (n mod 2)
         $n = $n - ($n & 1);
+
+        // In fNloop, we noted that the spec says to round up to the next
+        // highest even integer. We didn't do that in fNloop, because we do it
+        // right here:
+        // Nloop_all <- Nloop_all + (Nloop_all mod 2)
         $Nloop_all = $Nloop_all + ($Nloop_all & 1);
+
+        // Nloop_rw <- Nloop_rw - (Nloop_rw mod 2)
         $Nloop_rw = $Nloop_rw - ($Nloop_rw & 1);
+
+        // for i = 0 to p - 1 do
         for ($i = 0; $i < $p; $i++) {
+            // v <- in
             $v = $i * $n;
+            // if i = p - 1
             if ($i === $p - 1) {
+                // n <- N - v
                 $n = $N - $v;
             }
+            // w <- v + n - 1
             $w = $v + $n - 1;
+
+            // Initialize $sboxes[$i] to null, because SMix1 and SMix2 will use
+            // pwxform instead of salsa20/8 if and only if we set it to
+            // something not-null.
             $sboxes[$i] = null;
+
+            // if YESCRYPT_RW flag is set
             if (($flags & YESCRYPT_RW) !== 0) {
+                // SMix1_1(B_i, Sbytes/128, S_i, flags excluding YESCRYPT_RW)
+
+                // For r=1, we need the first two 64-byte blocks.
                 $x = array($pbkdf2_blocks[$i][0], $pbkdf2_blocks[$i][1]);
                 self::SMix1(1, $x, YESCRYPT_SBYTES/128, $sboxes[$i], $flags & ~YESCRYPT_RW, null);
+
+                // Now, we've used SMix1 to construct the sboxes for further
+                // invocation. But that's in array-of-array form, and we need to
+                // flatten it out so we can use it as an sbox.
                 for ($k = 0; $k < count($sboxes[$i]); $k++) {
                     $sboxes[$i][$k] = implode($sboxes[$i][$k]);
                 }
                 $sboxes[$i] = implode($sboxes[$i]);
+
+                // We copied the first two 64-byte blocks out. SMix1 changed
+                // them, so we need to write them back.
                 $pbkdf2_blocks[$i][0] = $x[0];
                 $pbkdf2_blocks[$i][1] = $x[1];
             }
+
+            // SMix1_r(B_i, n, V_{v...w}, flags)
             self::SMix1($r, $pbkdf2_blocks[$i], $n, $output, $flags, $sboxes[$i]);
             for ($j = $v; $j <= $w; $j++) {
                 $V[$j] = $output[$j - $v];
             }
+
+            // SMix2_r(B_i, p2floor(n), Nloop_rw, V_{v...w}, flags)
             self::SMix2($r, $pbkdf2_blocks[$i], self::p2floor($n), $Nloop_rw, $output, $flags, $sboxes[$i]);
             for ($j = $v; $j <= $w; $j++) {
                 $V[$j] = $output[$j - $v];
             }
         }
+
+        // for i = 0 to p - 1
         for ($i = 0; $i < $p; $i++) {
+            // SMix2_r(B_i, N, Nloop_all - Nloop_rw, V, flags excluding YESCRYPT_RW)
             self::SMix2($r, $pbkdf2_blocks[$i], $N, $Nloop_all - $Nloop_rw, $V, $flags & ~YESCRYPT_RW, $sboxes[$i]);
         }
     }
@@ -225,16 +327,26 @@ abstract class Yescrypt {
         self::simd_shuffle($x);
 
         $v = array();
+        // for i = 0 to N - 1 do
         for ($i = 0; $i < $N; $i++) {
+            // V_i = X
             $v[$i] = $x;
+            // if (have ROM) and ( (i /\ 1) != 0 )
             if (false) {
                 // TODO: ROM support
+
+            // else if (YESCRYPT_RW flag is set) and (i > 1)
             } elseif (($flags & YESCRYPT_RW) !== 0 && $i > 1) {
+                // j <- Wrap(Integerify(X), i)
                 $j = self::wrap(self::integerify($r, $x), $i);
+                // X <- X XOR V_j
                 for ($k = 0; $k < 2 * $r; $k++) {
                     $x[$k] ^= $v[$j][$k];
                 }
             }
+
+            // X <- H(X), where H is either salsa20/8 or pwxform, depending on
+            // flags.
             if (is_null($sbox)) {
                 self::blockmix_salsa8($r, $x);
             } else {
@@ -255,18 +367,26 @@ abstract class Yescrypt {
 
         self::simd_shuffle($x);
 
+        // for i = 0 to Nloop - 1 do
         for ($i = 0; $i < $Nloop; $i++) {
+            // if (have ROM) and ( (i /\ 1) != 0 )
             if (false) {
                 // TODO: ROM support
             } else {
+                // j <- Integerify(X) mod N
                 $j = self::integerify($r, $x) & ($N - 1);
+                // X <- X XOR V_j
                 for ($k = 0; $k < 2 * $r; $k++) {
                     $x[$k] ^= $v[$j][$k];
                 }
+                // if YESCRYPT_RW flag is set
                 if (($flags & YESCRYPT_RW) !== 0) {
+                    // V_j <- X
                     $v[$j] = $x;
                 }
             }
+            // X <- H(X), where H is either salsa20/8 or pwxform depending on
+            // flags.
             if (is_null($sbox)) {
                 self::blockmix_salsa8($r, $x);
             } else {
@@ -284,28 +404,43 @@ abstract class Yescrypt {
     {
         $flat = implode('', $B);
 
+        // r1 <- 128 * r / PWXbytes
         $r1 = (int)floor(128 * $r / YESCRYPT_PWXBYTES);
+
+        // X <- B'_{r_1 - 1}
         $X = substr($flat, ($r1 - 1) * YESCRYPT_PWXBYTES, YESCRYPT_PWXBYTES);
+
+        // for i = 0 to r_1 - 1 do
         for ($i = 0; $i < $r1; $i++) {
+            // if r_1 > 1
             if ($r1 > 1) {
+                // X <- X XOR B'_i
                 $X ^= substr($flat, $i * YESCRYPT_PWXBYTES, YESCRYPT_PWXBYTES);
             }
+            // X <- pwxform(X)
             self::pwxform($X, $sbox);
+            // B'_i <- X
             for ($j = 0; $j < YESCRYPT_PWXBYTES; $j++) {
                 $flat[$i * YESCRYPT_PWXBYTES + $j] = $X[$j];
             }
         }
 
+        // i = floor( (r_1 - 1) * PWXbytes / 64 )
         $i = (int)floor(($r1 - 1) * YESCRYPT_PWXBYTES / 64);
 
+        // B_i <- H(B_i) (where H is salsa20/8)
         $Bi = substr($flat, $i * 64, 64);
         $Bi = self::salsa20_8_core_binary($Bi);
         for ($j = 0; $j < 64; $j++) {
             $flat[$i * 64 + $j] = $Bi[$j];
         }
 
-        $Bim1 = $Bi;
+        // for i = i + 1 to 2*r - 1
+        $Bim1 = $Bi; // B_{i-1}
         for ($i = $i + 1; $i < 2 * $r; $i++) {
+            // B_i <- H(B_i XOR B_{i-1})
+            // Instead of re-reading B_{i-1} we just save it from the last
+            // iteration.
             $Bi = substr($flat, $i * 64, 64);
             $Bim1 = self::salsa20_8_core_binary($Bi ^ $Bim1);
             for ($j = 0; $j < 64; $j++) {
@@ -313,6 +448,7 @@ abstract class Yescrypt {
             }
         }
         
+        // Return the result.
         $B = str_split($flat, 64);
     }
 
@@ -336,25 +472,49 @@ abstract class Yescrypt {
             $sbox_ints[$i] |= unpack("V", substr($split[$i], 4, 4))[1] << 32;
         }
 
+        // Instead of splitting into 64-bit integers and then using shifts to
+        // get the high and low parts, we split into 32-bit integers and will
+        // use an offset to get the high and low parts. This means that all of
+        // our indices into $ints will have to be multiplied by 2, and we either
+        // add 0 for the low part or 1 for the high part (little endian).
         $LO = 0;
         $HI = 1;
 
+        // NOTE: There is some inconsistency in the original specification. The
+        // 'for' loop upper bounds are written as inclusive, but checking the
+        // reference implementation, they are actually exclusive here.
+        // Therefore, in the comments, I have added "- 1" to the upper bound.
+
+        // for i = 0 to PWXrounds - 1 do
         for ($i = 0; $i < YESCRYPT_PWXROUNDS; $i++) {
+            // for j = 0 to PWXgather - 1 do
             for ($j = 0; $j < YESCRYPT_PWXGATHER; $j++) {
+
+                // lo(B_j,0)
                 $xl = $ints[2 * $j * YESCRYPT_PWXSIMPLE + $LO];
+                // hi(B_j,0)
                 $xh = $ints[2 * $j * YESCRYPT_PWXSIMPLE + $HI];
+
+                // p0 <- (lo(B_j,0) ^ Smask) / (PWXsimple * 8)
                 $p0 = (int)floor(($xl & YESCRYPT_SMASK) / (YESCRYPT_PWXSIMPLE * 8));
+                // p1 <- (hi(B_j,0) ^ Smask) / (PWXsimple * 8)
                 $p1 = (int)floor(($xh & YESCRYPT_SMASK) / (YESCRYPT_PWXSIMPLE * 8));
 
+                // for k = 0 to PWXsimple - 1 do
                 for ($k = 0; $k < YESCRYPT_PWXSIMPLE; $k++) {
+                    // lo(B_j,k)
                     $BjkLO = $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $LO];
+                    // hi(B_j,k)
                     $BjkHI = $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $HI];
 
-
+                    // S0_p0,k
                     $S0p0k = $sbox_ints[$p0 * YESCRYPT_PWXSIMPLE + $k];
+                    // S1_p1,k
                     $S1p1k = $sbox_ints[count($sbox_ints) / 2 + $p1 * YESCRYPT_PWXSIMPLE + $k];
 
-                    // MULTIPLICATION
+                    // B_j,k <- (hi(B_j,k) * lo(B_j,k) + S0_p0,k) XOR S1_p1,k
+
+                    // MULTIPLICATION: hi(B_j,k) * lo(B_j,k).
 
                     // Even 64-bit PHP can only represent values up to 2^63 - 1.
                     // Anything higher will be converted to float, and we'll
@@ -362,6 +522,9 @@ abstract class Yescrypt {
                     // multiplication ourselves.
 
                     // Naive multiplication algorithm:
+                    // A = 2^16 * h(A) + l(A)
+                    // B = 2^16 * h(B) + l(B)
+                    // A * B = (2^16 * h(A) + l(A))  *  (2^16 * h(B) + l(B))
                     // A * B = 2^32 h(A) h(B) + 2^16 h(A) l(B) + 2^16 h(B) l(A) + l(A) l(B)
 
                     $hA = ($BjkHI >> 16) & 0xFFFF;
@@ -386,7 +549,7 @@ abstract class Yescrypt {
                     // This shouldn't actually be necessary, but just in case.
                     $NBjkHI &= 0xFFFFFFFF;
 
-                    // ADDITION
+                    // ADDITION: ... + S0_p0,k
                     $NBjkLO += $S0p0k & 0xFFFFFFFF;
                     $carry = $NBjkLO >> 32;
                     $NBjkLO &= 0xFFFFFFFF;
@@ -395,16 +558,18 @@ abstract class Yescrypt {
                               $carry +
                               $NBjkHI) & 0xFFFFFFFF;
 
-                    // XOR
+                    // XOR: ... XOR S1_p1,k
                     $NBjkLO ^= $S1p1k & 0xFFFFFFFF;
                     $NBjkHI ^= ($S1p1k >> 32) & 0xFFFFFFFF;
 
+                    // Save back into B_j,k.
                     $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $LO] = $NBjkLO;
                     $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $HI] = $NBjkHI;
                 }
             }
         }
 
+        // Return the result by modifying the input parameter.
         $new_b = "";
         for ($i = 0; $i < count($ints); $i++) {
             $new_b .= pack("V", $ints[$i]);
@@ -460,8 +625,11 @@ abstract class Yescrypt {
      */
     public static function integerify($r, $B)
     {
-        // XXX: for returning more than 32 bits, we'd need to deal with the SIMD
-        // shuffling here.
+        /*
+         * NOTE: If you're modifying this to return a 64-bit value, remember
+         * that $B has been SIMD-shuffled, so you'll have to look at the spec to
+         * see which is the correct index of the high part.
+         */
         $last_block = $B[2*$r - 1];
         return unpack("V", $last_block)[1];
     }

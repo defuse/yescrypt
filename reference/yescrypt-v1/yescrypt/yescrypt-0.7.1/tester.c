@@ -348,6 +348,7 @@ int main(int argc, char **argv)
         for (r = 1; r <= TEST_MAX_R; r++) {
             for (p = 1; p < TEST_MAX_P; p++) {
                 for (t = 0; t < TEST_MAX_T; t++) {
+                    // >= 32 byte output.
                     if (t == 0) {
                         fail |= test_yescrypt(
                             argv[1],
@@ -372,6 +373,33 @@ int main(int argc, char **argv)
                         (const uint8_t *)"", 0,
                         N, r, p, t, 0, YESCRYPT_WORM,
                         64
+                    );
+
+                    // < 32 byte output.
+                    if (t == 0) {
+                        fail |= test_yescrypt(
+                            argv[1],
+                            (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                            (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
+                            N, r, p, t, 0, 0,
+                            16
+                        );
+                    }
+                    if (N/p > 1) {
+                        fail |= test_yescrypt(
+                            argv[1],
+                            (const uint8_t *)"", 0,
+                            (const uint8_t *)"", 0,
+                            N, r, p, t, 0, YESCRYPT_RW,
+                            16
+                        );
+                    }
+                    fail |= test_yescrypt(
+                        argv[1],
+                        (const uint8_t *)"", 0,
+                        (const uint8_t *)"", 0,
+                        N, r, p, t, 0, YESCRYPT_WORM,
+                        16
                     );
                 }
             }
