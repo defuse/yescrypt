@@ -103,9 +103,13 @@ abstract class Yescrypt {
             throw new DomainException("Can't use t > 0 without flags.");
         }
 
-        // TODO: finish the range checks (N, + different flag combos)
+        // NOTE: We don't check an upper bound on $N here, since it is simpler
+        // to just check for overflow after computing fNloop.
 
-        // TODO: the YESCRYPT_RW stuff for large N/p? (see scrypt-ref.c)
+        if ( ($flags & YESCRYPT_RW) !== 0 && $p >= 1 && (int)floor($N / $p) >= 0x100 && (int)floor($N / $p) * $r >= 0x20000 ) {
+            // TODO: implement this (see yescrypt-ref.c in yescrypt_kdf()).
+            throw new DomainException("YESCRYPT_PREHASH is not implemented.");
+        }
 
         if ($flags !== 0) {
             // Pre-hash to stop long passwords from being replacable by their
@@ -176,9 +180,9 @@ abstract class Yescrypt {
             // First column.
             switch ($t) {
                 case 0:
-                    return floor(($N + 2) / 3);
+                    return (int)floor(($N + 2) / 3);
                 case 1:
-                    return floor((2 * $N + 2) / 3);
+                    return (int)floor((2 * $N + 2) / 3);
                 default:
                     return ($t - 1) * $N;
             }
@@ -188,7 +192,7 @@ abstract class Yescrypt {
                 case 0:
                     return $N;
                 case 1:
-                    return $N + floor( ($N + 1) / 2 );
+                    return $N + (int)floor( ($N + 1) / 2 );
                 default:
                     return $t * $N;
             }
@@ -232,7 +236,7 @@ abstract class Yescrypt {
         $output = null;
 
         // n <- N / p
-        $n = floor($N / $p);
+        $n = (int)floor($N / $p);
         // Nloop_all <- fNloop(n, t, flags)
         $Nloop_all = self::fNloop($n, $t, $flags);
 
@@ -257,6 +261,11 @@ abstract class Yescrypt {
         // Nloop_rw <- Nloop_rw - (Nloop_rw mod 2)
         $Nloop_rw = $Nloop_rw - ($Nloop_rw & 1);
 
+        // Check if Nloop_all overflowed.
+        if (!is_int($Nloop_all)) {
+            throw new DomainException("The value of Nloop_all is too big.");
+        }
+
         // for i = 0 to p - 1 do
         for ($i = 0; $i < $p; $i++) {
             // v <- in
@@ -268,6 +277,9 @@ abstract class Yescrypt {
             }
             // w <- v + n - 1
             $w = $v + $n - 1;
+
+            // We don't need to worry about overflow in the lines above, because
+            // all the values are <= $N, which we know fits into an integer.
 
             // Initialize $sboxes[$i] to null, because SMix1 and SMix2 will use
             // pwxform instead of salsa20/8 if and only if we set it to
@@ -334,6 +346,13 @@ abstract class Yescrypt {
             // else if (YESCRYPT_RW flag is set) and (i > 1)
             } elseif (($flags & YESCRYPT_RW) !== 0 && $i > 1) {
                 // j <- Wrap(Integerify(X), i)
+                if ($i >= 1 << 30) {
+                    // The result of integerify is taken modulo p2floor($i).
+                    // Since our integerify only returns a 32-bit signed result,
+                    // check if not having the full 64-bit implementation would
+                    // affect the result.
+                    throw new DomainException("Value of i is too big for our integerify(), in sMix1.");
+                }
                 $j = self::wrap(self::integerify($r, $x), $i);
                 // X <- X XOR V_j
                 for ($k = 0; $k < 2 * $r; $k++) {
@@ -370,6 +389,12 @@ abstract class Yescrypt {
                 // TODO: ROM support
             } else {
                 // j <- Integerify(X) mod N
+                if ($N >= 1 << 30) {
+                    // integerify is supposed to return a 64-bit integer, but
+                    // ours returns a 32-bit signed integer. If this would
+                    // affect the result, throw an exception.
+                    throw new DomainException("We don't support values of N (in sMix2) that big.");
+                }
                 $j = self::integerify($r, $x) & ($N - 1);
                 // X <- X XOR V_j
                 for ($k = 0; $k < 2 * $r; $k++) {
