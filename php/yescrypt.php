@@ -31,8 +31,6 @@ define('YESCRYPT_RMIN', (int)floor((YESCRYPT_PWXBYTES + 127) / 128));
 define('YESCRYPT_RW', 1);
 define('YESCRYPT_WORM', 2);
 
-class YescryptException extends Exception { }
-
 abstract class Yescrypt {
 
     /*
@@ -43,68 +41,66 @@ abstract class Yescrypt {
     public static function calculate($password, $salt, $N, $r, $p, $t, $g, $flags, $dkLen)
     {
         if (PHP_INT_SIZE < 8) {
-            throw new YescryptException("This implementation requires 64-bit integers.");
+            throw new Exception("This implementation requires 64-bit integers.");
         }
 
-        // TODO: use built-in exception classes where possible.
-
         if (!is_int($flags) || ($flags & ~(YESCRYPT_RW | YESCRYPT_WORM)) !== 0) {
-            throw new YescryptException("Unknown flags.");
+            throw new InvalidArgumentException("Unknown flags.");
         }
 
         if (!is_int($N)) {
-            throw new YescryptException("N is not an integer.");
+            throw new InvalidArgumentException("N is not an integer.");
         }
         if (!is_int($r)) {
-            throw new YescryptException("r is not an integer.");
+            throw new InvalidArgumentException("r is not an integer.");
         }
         if (!is_int($p)) {
-            throw new YescryptException("p is not an integer.");
+            throw new InvalidArgumentException("p is not an integer.");
         }
 
         if (!is_int($t)) {
-            throw new YescryptException("t is not an integer.");
+            throw new InvalidArgumentException("t is not an integer.");
         }
 
         if (!is_int($g)) {
-            throw new YescryptException("g is not an integer.");
+            throw new InvalidArgumentException("g is not an integer.");
         }
 
         if (!is_int($dkLen)) {
-            throw new YescryptException("dkLen is not an integer.");
+            throw new InvalidArgumentException("dkLen is not an integer.");
         }
 
         // If $N is not a power of two, subtracting 1 will leave the leading
         // one unchanged, and thus the & will be non-zero. The other direction
         // is obvious.
         if (($N & ($N - 1)) !== 0) {
-            throw new YescryptException("N is not a power of two.");
+            throw new DomainException("N is not a power of two.");
         }
 
         if ($N <= 1) {
-            throw new YescryptException("N is too small.");
+            throw new DomainException("N is too small.");
         }
 
         if ($r < 1) {
-            throw new YescryptException("r is too small.");
+            throw new DomainException("r is too small.");
         }
 
         if ($p < 1) {
-            throw new YescryptException("p is too small.");
+            throw new DomainException("p is too small.");
         }
 
         if ($g !== 0) {
-            throw new YescryptException("g > 0 is not supported yet.");
+            throw new DomainException("g > 0 is not supported yet.");
         }
 
         // The largest value computed is 128 * $r * $p, and we want that to fit
         // into one of PHP's integers. Let's check if it overflows into a float.
         if (!is_int($r * $p * 128)) {
-            throw new YescryptException("r * p is too big.");
+            throw new DomainException("r * p is too big.");
         }
 
         if ($flags === 0 && $t !== 0) {
-            throw new YescryptException("Can't use t > 0 without flags.");
+            throw new DomainException("Can't use t > 0 without flags.");
         }
 
         // TODO: finish the range checks (N, + different flag combos)
@@ -595,7 +591,7 @@ abstract class Yescrypt {
     public static function simd_shuffle_block($b)
     {
         if (self::our_strlen($b) !== 64) {
-            throw new YescryptException("Bad block size.");
+            throw new DomainException("Bad block size.");
         }
 
         $shuffled = "";
@@ -609,7 +605,7 @@ abstract class Yescrypt {
     public static function simd_unshuffle_block($b)
     {
         if (self::our_strlen($b) !== 64) {
-            throw new YescryptException("Bad block size.");
+            throw new DomainException("Bad block size.");
         }
 
         $unshuffled = array_fill(0, 16, null);
@@ -643,7 +639,7 @@ abstract class Yescrypt {
     public static function blockmix_salsa8($r, & $B)
     {
         if (!is_int($r) || $r <= 0 || !is_array($B) || count($B) != 2*$r) {
-            throw new YescryptException("bad parameters to scryptBlockMix");
+            throw new DomainException("bad parameters to scryptBlockMix");
         }
     
         $x = $B[2*$r - 1];
@@ -654,7 +650,7 @@ abstract class Yescrypt {
     
         for ($i = 0; $i <= 2*$r - 1; $i++) {
             if (self::our_strlen($B[$i]) != 64) {
-                throw new YescryptException("block is not 64 bytes in scryptBlockMix");
+                throw new DomainException("block is not 64 bytes in scryptBlockMix");
             }
             $t = $x ^ $B[$i];
             $x = self::salsa20_8_core_binary($t);
@@ -670,7 +666,7 @@ abstract class Yescrypt {
     public static function salsa20_8_core_binary($in)
     {
         if (self::our_strlen($in) != 64) {
-            throw new YescryptException("Block passed to salsa20_8_core_binary is not 64 bytes");
+            throw new DomainException("Block passed to salsa20_8_core_binary is not 64 bytes");
         }
 
         $in = self::simd_unshuffle_block($in);
@@ -700,13 +696,13 @@ abstract class Yescrypt {
     public static function salsa20_8_core_ints($in, & $out)
     {
         if (!is_array($in) || count($in) != 16 || !is_array($out) || count($out) != 16) {
-            throw new YescryptException("bad parameters to salsa20_8_core_ints");
+            throw new DomainException("bad parameters to salsa20_8_core_ints");
         }
     
         $x = array();
         for ($i = 0; $i < 16; $i++) {
             if (!is_int($in[$i]) || !is_int($out[$i])) {
-                throw new YescryptException("bad value in array passed to salsa20_8_core_ints");
+                throw new DomainException("bad value in array passed to salsa20_8_core_ints");
             }
             $x[$i] = $in[$i];
         }
@@ -742,7 +738,7 @@ abstract class Yescrypt {
     public static function R($int, $rot)
     {
         if (!is_int($int) || !is_int($rot) || $rot <= 0 || $rot >= 32) {
-            throw new YescryptException("bad parameters given to R");
+            throw new DomainException("bad parameters given to R");
         }
         return (($int << $rot) | (($int >> (32 - $rot)) & (pow(2, $rot) - 1))) & 0xffffffff;
     }
