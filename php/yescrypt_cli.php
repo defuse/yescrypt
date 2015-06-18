@@ -67,4 +67,6 @@ case "salsa20_8":
     $result = Yescrypt::salsa20_8_core_binary($b);
     echo $result;
     break;
+default:
+    die('bad function');
 }

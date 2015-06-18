@@ -30,6 +30,7 @@ define('YESCRYPT_RMIN', (int)floor((YESCRYPT_PWXBYTES + 127) / 128));
 /* Flags. Keep these the same as the reference implementation. */
 define('YESCRYPT_RW', 1);
 define('YESCRYPT_WORM', 2);
+define('YESCRYPT_PREHASH', 0x100000);
 
 abstract class Yescrypt {
 
@@ -44,7 +45,7 @@ abstract class Yescrypt {
             throw new Exception("This implementation requires 64-bit integers.");
         }
 
-        if (!is_int($flags) || ($flags & ~(YESCRYPT_RW | YESCRYPT_WORM)) !== 0) {
+        if (!is_int($flags) || ($flags & ~(YESCRYPT_RW | YESCRYPT_WORM | YESCRYPT_PREHASH)) !== 0) {
             throw new InvalidArgumentException("Unknown flags.");
         }
 
@@ -107,14 +108,20 @@ abstract class Yescrypt {
         // to just check for overflow after computing fNloop.
 
         if ( ($flags & YESCRYPT_RW) !== 0 && $p >= 1 && (int)floor($N / $p) >= 0x100 && (int)floor($N / $p) * $r >= 0x20000 ) {
-            // TODO: implement this (see yescrypt-ref.c in yescrypt_kdf()).
-            throw new DomainException("YESCRYPT_PREHASH is not implemented.");
+            // TODO: test this!
+            // We know that $N >= 2^8 because N >= floor(N/p) >= 0x100 = 2^8.
+            // Therefore $N >> 6 >= 2^8 >> 6 = 4. So $N >> 6 is always valid.
+            $password = self::calculate($password, $salt, $N >> 6, $r, $p, 0, 0, $flags | YESCRYPT_PREHASH, 32);
         }
 
         if ($flags !== 0) {
             // Pre-hash to stop long passwords from being replacable by their
             // SHA256 hash (a quirk of HMAC).
-            $password = hash_hmac('sha256', $password, "yescrypt", true);
+            $key = "yescrypt";
+            if (($flags & YESCRYPT_PREHASH) !== 0) {
+                $key .= "-prehash";
+            }
+            $password = hash_hmac('sha256', $password, $key, true);
         }
 
         $bytes = hash_pbkdf2('sha256', $password, $salt, 1, $p * 128 * $r, true);
@@ -148,7 +155,7 @@ abstract class Yescrypt {
         // Make sure we get at least 32 bytes.
         $result = hash_pbkdf2('sha256', $password, $new_salt, 1, max($dkLen, 32), true);
 
-        if ($flags !== 0) {
+        if ($flags !== 0 && ($flags & YESCRYPT_PREHASH) === 0) {
             // This is why we needed at least 32 bytes.
             $client_value = substr($result, 0, 32);
 

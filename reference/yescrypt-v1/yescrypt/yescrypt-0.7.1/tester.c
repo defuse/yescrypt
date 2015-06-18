@@ -16,7 +16,7 @@
 #define Sbytes   8192
 
 // The range of yescrypt() parameters to test. Starting at smallest value.
-#define TEST_MAX_N 32
+#define TEST_MAX_N 16
 #define TEST_MAX_R 4
 #define TEST_MAX_P 4
 #define TEST_MAX_T 4
@@ -174,13 +174,19 @@ int invoke_yescrypt(
 
     fp = popen(exec_command, "r");
     if (fp == NULL) {
+        printf("popen failed.\n");
+        printf("%s\n", exec_command);
         return -1;
     }
 
     n = fread(buf, 1, buf_len, fp);
     if (n < buf_len) {
+        printf("fread failed, got %llu instead of %llu.\n", (unsigned long long)n, (unsigned long long)buf_len);
+        printf("%s\n", exec_command);
         return -1;
     }
+
+    pclose(fp);
 
     return 0;
 }
@@ -252,8 +258,14 @@ int test_yescrypt(
             printf("%02x", computed[i]);
         }
         printf("\n");
+
+        free(correct);
+        free(computed);
         return 1;
     }
+
+    free(correct);
+    free(computed);
     return 0;
 }
 
@@ -344,10 +356,19 @@ int main(int argc, char **argv)
         fail |= test_pwxform(argv[1]);
     }
 
+    //// Test the YESCRYPT_PREHASH case.
+    //fail |= test_yescrypt(
+    //    argv[1],
+    //    (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+    //    (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
+    //    0x200, 0x200000 / 0x200, 1, 1, 0, YESCRYPT_RW,
+    //    16
+    //);
+
     for (N = 2; N <= TEST_MAX_N; N = N << 1) {
         for (r = 1; r <= TEST_MAX_R; r++) {
-            for (p = 1; p < TEST_MAX_P; p++) {
-                for (t = 0; t < TEST_MAX_T; t++) {
+            for (p = 1; p <= TEST_MAX_P; p++) {
+                for (t = 0; t <= TEST_MAX_T; t++) {
                     // >= 32 byte output.
                     if (t == 0) {
                         fail |= test_yescrypt(
@@ -361,16 +382,16 @@ int main(int argc, char **argv)
                     if (N/p > 1) {
                         fail |= test_yescrypt(
                             argv[1],
-                            (const uint8_t *)"", 0,
-                            (const uint8_t *)"", 0,
+                            (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                            (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
                             N, r, p, t, 0, YESCRYPT_RW,
                             64
                         );
                     }
                     fail |= test_yescrypt(
                         argv[1],
-                        (const uint8_t *)"", 0,
-                        (const uint8_t *)"", 0,
+                        (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                        (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
                         N, r, p, t, 0, YESCRYPT_WORM,
                         64
                     );
@@ -388,16 +409,16 @@ int main(int argc, char **argv)
                     if (N/p > 1) {
                         fail |= test_yescrypt(
                             argv[1],
-                            (const uint8_t *)"", 0,
-                            (const uint8_t *)"", 0,
+                            (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                            (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
                             N, r, p, t, 0, YESCRYPT_RW,
                             16
                         );
                     }
                     fail |= test_yescrypt(
                         argv[1],
-                        (const uint8_t *)"", 0,
-                        (const uint8_t *)"", 0,
+                        (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                        (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
                         N, r, p, t, 0, YESCRYPT_WORM,
                         16
                     );
