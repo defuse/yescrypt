@@ -10,8 +10,18 @@ when "yescrypt"
   puts "Not implemented."
   exit(false)
 when "pwxform"
-  puts "Not implemented."
-  exit(false)
+  if ARGV.length != 3
+    puts "Wrong number of arguments for pwxform"
+    exit(false)
+  end
+
+  input = [ARGV[1]].pack("H*")
+  input = input.unpack("V*")
+  sbox = [ARGV[2]].pack("H*")
+  sbox = sbox.unpack("V*")
+  Yescrypt.pwxform(input, sbox)
+  binary = input.pack("V*")
+  print binary
 when "salsa20_8"
   if ARGV.length != 2
     puts "Wrong number of arguments for salsa20_8"

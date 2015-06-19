@@ -1,6 +1,25 @@
 
 module Yescrypt
 
+  PWXSIMPLE = 2
+  PWXGATHER = 4
+  PWXROUNDS = 6
+  SWIDTH = 8
+
+  PWXBYTES = PWXGATHER * PWXSIMPLE * 8
+  PWXWORDS = PWXBYTES / 4
+  SBYTES = 2 * (1 << SWIDTH) * PWXSIMPLE * 8
+  SWORDS = SBYTES / 4
+  SMASK = ((1 << SWIDTH) - 1) * PWXSIMPLE * 8
+  RMIN = (PWXBYTES + 127) / 128
+
+  YESCRYPT_RW = 1
+  YESCRYPT_WORM = 2
+  YESCRYPT_PREHASH = 0x100000
+
+  LO = 0
+  HI = 1
+
   def calculate(password, salt, n, r, p, t, g, flags, dkLen)
 
   end
@@ -33,8 +52,32 @@ module Yescrypt
 
   end
 
-  def pwxform(b, sbox)
+  def Yescrypt.pwxform(b, sbox)
+    0.upto(PWXROUNDS - 1) do |i|
+      0.upto(PWXGATHER - 1) do |j|
+        xl = b[2*j*PWXSIMPLE + LO]
+        xh = b[2*j*PWXSIMPLE + HI]
 
+        p0 = (xl & SMASK) / (PWXSIMPLE * 8)
+        p1 = (xh & SMASK) / (PWXSIMPLE * 8)
+
+        0.upto(PWXSIMPLE - 1) do |k|
+          bjklo = b[2 * (j * PWXSIMPLE + k) + LO]
+          bjkhi = b[2 * (j * PWXSIMPLE + k) + HI]
+
+          # XXX: side channel on small-int systems (over threshold = bignum)
+
+          s0p0k = sbox[2 * (p0 * PWXSIMPLE + k) + LO] |
+                  (sbox[2 * (p0 * PWXSIMPLE + k) + HI] << 32)
+          s1p1k = sbox[sbox.count/2 + 2 * (p1 * PWXSIMPLE + k) + LO] |
+                  (sbox[sbox.count / 2 + 2 * (p1 * PWXSIMPLE + k) + HI] << 32)
+
+          result = (((bjkhi * bjklo) + s0p0k) ^ s1p1k) & 0xffffffffffffffff
+          b[2 * (j * PWXSIMPLE + k) + LO] = result & 0xffffffff
+          b[2 * (j * PWXSIMPLE + k) + HI] = (result >> 32) & 0xffffffff
+        end
+      end
+    end
   end
 
   def Yescrypt.simd_shuffle_block(x)
