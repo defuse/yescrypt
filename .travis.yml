@@ -4,5 +4,5 @@ php:
     - "5.5"
 
 script:
-    ./test-php.sh
-    ./test-ruby.sh
+    - ./test-php.sh
+    - ./test-ruby.sh
