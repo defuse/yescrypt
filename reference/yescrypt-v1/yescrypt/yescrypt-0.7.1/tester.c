@@ -186,7 +186,11 @@ int invoke_yescrypt(
         return -1;
     }
 
-    pclose(fp);
+    int exit = pclose(fp);
+    if (exit != 0) {
+        printf("command exited with non-zero status.\n");
+        return -1;
+    }
 
     return 0;
 }
@@ -361,7 +365,7 @@ int main(int argc, char **argv)
     //    argv[1],
     //    (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
     //    (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
-    //    0x200, 0x200000 / 0x200, 1, 1, 0, YESCRYPT_RW,
+    //    0x100, 0x200000 / 0x100, 1, 1, 0, YESCRYPT_RW,
     //    16
     //);
 

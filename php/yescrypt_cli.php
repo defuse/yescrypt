@@ -1,5 +1,7 @@
 <?php
 
+ini_set('memory_limit', '4G');
+
 /*
 
     TEST CASES:
@@ -29,8 +31,8 @@ case "yescrypt":
         die('Wrong number of arguments for yescrypt.');
     }
     $result = Yescrypt::calculate(
-        hex2bin($argv[2]),           // password
-        hex2bin($argv[3]),           // salt
+        hex2bin($argv[2]),  // password
+        hex2bin($argv[3]),  // salt
         (int)$argv[4],      // N
         (int)$argv[5],      // r
         (int)$argv[6],      // p
