@@ -1,3 +1,4 @@
+require 'openssl'
 
 module Yescrypt
 
@@ -20,39 +21,395 @@ module Yescrypt
   LO = 0
   HI = 1
 
-  def calculate(password, salt, n, r, p, t, g, flags, dkLen)
+  def self.calculate(password, salt, n, r, p, t, g, flags, dkLen)
+
+    if !flags.is_a?(Integer) || (flags & ~(YESCRYPT_RW | YESCRYPT_WORM | YESCRYPT_PREHASH)) != 0
+      raise ArgumentError.new("Unknown flags.")
+    end
+
+    if !n.is_a?(Integer)
+      raise ArgumentError.new("N is not an integer.")
+    end
+
+    if !r.is_a?(Integer)
+      raise ArgumentError.new("r is not an integer.")
+    end
+
+    if !p.is_a?(Integer)
+      raise ArgumentError.new("p is not an integer.")
+    end
+
+    if !t.is_a?(Integer)
+      raise ArgumentError.new("t is not an integer.")
+    end
+
+    if !g.is_a?(Integer)
+      raise ArgumentError.new("g is not an integer.")
+    end
+
+    if !dkLen.is_a?(Integer)
+      raise ArgumentError.new("dkLen is not an integer.")
+    end
+
+    if (n & (n - 1)) != 0
+      raise ArgumentError.new("N is not a power of two.")
+    end
+
+    if n <= 1
+      raise ArgumentError.new("N is too small.")
+    end
+
+    if r < 1
+      raise ArgumentError.new("r is too small.")
+    end
+
+    if p < 1
+      raise ArgumentError.new("p is too small.")
+    end
+
+    if g != 0
+      raise NotImplementedError.new("g > 0 is not supported yet.")
+    end
+
+    # XXX: bounds check on 128 * r * p omitted because of Ruby's automatic
+    # BigInt conversion... maybe we want to check anyway to avoid side channels?
+
+    if flags == 0 && t != 0
+      raise ArgumentError.new("Can't use t > 0 without flags.")
+    end
+
+    if (flags & YESCRYPT_RW) != 0 && p >= 1 && n/p >= 0x100 && n/p * r >= 0x20000
+      password = self.calculate(password, salt, n >> 6, r, p, 0, 0, flags | YESCRYPT_PREHASH, 32)
+    end
+
+    if flags != 0
+      key = "yescrypt"
+      if (flags & YESCRYPT_PREHASH) != 0
+        key << "-prehash"
+      end
+      password = self.hmac_sha256(password, key)
+    end
+
+    bytes = self.pbkdf2_sha256(password, salt, 1, p * 128 * r)
+    b = bytes.unpack("V*")
+
+    if flags != 0
+      password = bytes[0, 32]
+    end
+
+    if (flags & YESCRYPT_RW) != 0
+      self.sMix(n, r, t, p, b, flags)
+    else
+      0.upto(p - 1) do |i|
+        b0 = b[i * 2 * r * 16, 2 * r * 16]
+        self.sMix(n, r, t, 1, b0, flags)
+        0.upto(2 * r * 16 - 1) do |j|
+          b[i * 2 * r * 16 + j] = b0[j]
+        end
+      end
+    end
+
+    new_salt = b.pack("V*")
+
+    result = self.pbkdf2_sha256(password, new_salt, 1, [dkLen, 32].max)
+
+    if flags != 0 && (flags & YESCRYPT_PREHASH) == 0
+      client_value = result[0, 32]
+
+      clientkey = self.hmac_sha256("Client Key", client_value)
+      storedkey = self.sha256(clientkey)
+
+      0.upto([dkLen, 32].min - 1) do |i|
+        result[i] = storedkey[i]
+      end
+    end
+
+    return result[0, dkLen]
+  end
+
+  def self.sha256(message)
+    sha256 = OpenSSL::Digest::SHA256.new
+    return sha256.digest(message)
+  end
+
+  def self.hmac_sha256(message, key)
+    sha256 = OpenSSL::Digest::SHA256.new
+    return OpenSSL::HMAC.digest(sha256, key, message)
+  end
+
+  def self.pbkdf2_sha256(password, salt, iters, dkLen)
+    sha256 = OpenSSL::Digest::SHA256.new
+    return OpenSSL::PKCS5.pbkdf2_hmac(password, salt, iters, dkLen, sha256)
+  end
+
+  def self.fNloop(n, t, flags)
+    # +------+-----------------+-----------------+
+    # |      | Nloop           |                 |
+    # | t    | YESCRYPT_RW     | YESCRYPT_WORM   |
+    # +------+-----------------+-----------------+
+    # | 0    | (N+2)/3         | N               |
+    # | 1    | (2N + 2) / 3    | N + (N + 1) / 2 |
+    # | > 1  | (t - 1)*N       | t*N             |
+    # +------+-----------------+-----------------+
+
+    if (flags & YESCRYPT_RW) != 0
+      case t
+      when 0
+        return (n+2) / 3
+      when 1
+        return (2 * n + 2) / 3
+      else
+        return (t - 1) * n
+      end
+    elsif (flags & YESCRYPT_WORM) != 0
+      case t
+      when 0
+        return n
+      when 1
+        return n + (n+1) / 2
+      else
+        return t * n
+      end
+    else
+      return n
+    end
+  end
+
+  def self.p2floor(x)
+    while (y = x & (x - 1)) != 0
+      x = y
+    end
+    return x
+  end
+
+  def self.wrap(x, i)
+    n = self.p2floor(i)
+    return (x & (n - 1)) + (i - n)
+  end
+
+  def self.sMix(n, r, t, p, pbkdf2_blocks, flags)
+    if !n.is_a?(Integer) || n <= 1 ||
+       !r.is_a?(Integer) || r <= 0 ||
+       !t.is_a?(Integer) || t <  0 ||
+       !p.is_a?(Integer) || p <= 0 ||
+       !pbkdf2_blocks.is_a?(Array) || pbkdf2_blocks.count != p * 2 * r * 16
+      raise ArgumentError.new("Bad arguments to sMix.")
+    end
+
+    sboxes = Array.new(p) { nil }
+
+    little_n = n/p
+
+    nloop_all = self.fNloop(little_n, t, flags)
+
+    if (flags & YESCRYPT_RW) != 0
+      nloop_rw = nloop_all / p
+    else
+      nloop_rw = 0
+    end
+
+    little_n = little_n - (little_n & 1)
+
+    nloop_all = nloop_all + (nloop_all & 1)
+    nloop_rw = nloop_rw - (nloop_rw & 1)
+
+    # XXX: maybe bounds check nloop_rw here as in PHP?
+
+    # XXX: check this
+    v = Array.new(n * 2 * r * 16)
+
+    # XXX: if this doesn't work, first thing to try: did I confuse little_n and
+    # n or little_v and v anywhere?
+
+    0.upto(p - 1) do |i|
+      little_v = i * little_n
+      if i == p - 1
+        little_n = n - little_v
+      end
+      w = little_v + little_n - 1
+
+      if (flags & YESCRYPT_RW) != 0
+        # Slice out the first two 64-byte blocks.
+        x = pbkdf2_blocks[i * 2 * r * 16, 2 * 16]
+        # Fill the sbox
+        sboxes[i] = Array.new( SWORDS ) { 0 }
+        self.sMix1(1, x, SBYTES/128, sboxes[i], flags & ~YESCRYPT_RW, nil)
+        # Copy back over the first two 64-byte blocks.
+        0.upto(2 * 16 - 1) do |j|
+          pbkdf2_blocks[i * 2 * r * 16 + j] = x[j]
+        end
+      end
+
+
+      block_i = pbkdf2_blocks[2 * r * 16 * i, 2 * r * 16]
+      # XXX: try to only allocate this once (or twice)
+      output = Array.new(little_n * 2 * r * 16) { 0 }
+      self.sMix1(r, block_i, little_n, output, flags, sboxes[i])
+      little_v.upto(w) do |j|
+        0.upto(2 * r * 16 - 1) do |k|
+          v[2 * r * 16 * j + k] = output[2 * r * 16 * (j-little_v) + k]
+        end
+      end
+
+      self.sMix2(r, block_i, self.p2floor(little_n), nloop_rw, output, flags, sboxes[i])
+      little_v.upto(w) do |j|
+        0.upto(2 * r * 16 - 1) do |k|
+          v[2 * r * 16 * j + k] = output[2 * r * 16 * (j-little_v) + k]
+        end
+      end
+
+      # Write block_i back.
+      0.upto(2 * r * 16 - 1) do |j|
+        pbkdf2_blocks[2 * r * 16 * i + j] = block_i[j]
+      end
+    end
+
+    0.upto(p - 1) do |i|
+      block_i = pbkdf2_blocks[2 * r * 16 * i, 2 * r * 16]
+      self.sMix2(r, block_i, n, nloop_all - nloop_rw, v, flags & ~YESCRYPT_RW, sboxes[i])
+      # Write block_i back.
+      0.upto(2 * r * 16 - 1) do |j|
+        pbkdf2_blocks[2 * r * 16 * i + j] = block_i[j]
+      end
+    end
 
   end
 
-  def fNloop(n, t, flags)
+  def self.sMix1(r, input_block, n, out_seq_write_memory, flags, sbox)
+    if !r.is_a?(Integer) || r <= 0 ||
+       !input_block.is_a?(Array) || input_block.count != 2 * r * 16 ||
+       !n.is_a?(Integer) || n <= 0 ||
+       !out_seq_write_memory.is_a?(Array) || out_seq_write_memory.count != 2 * r * 16 * n
+      raise ArgumentError.new("Bad arguments to sMix1.")
+    end
 
+    self.simd_shuffle(input_block)
+
+    0.upto(n - 1) do |i|
+      # V_i <- X
+      0.upto(2 * r * 16) do |j|
+        out_seq_write_memory[2 * r * 16 * i + j] = input_block[j]
+      end
+
+      if false
+        # TODO: ROM support
+      elsif (flags & YESCRYPT_RW) != 0 && i > 1
+        # XXX bound check
+        j = self.wrap(self.integerify(r, input_block), i)
+        # X <- X XOR V_j
+        0.upto(2 * r * 16 - 1) do |k|
+          input_block[k] ^= out_seq_write_memory[2 * r * 16 * j + k]
+        end
+      end
+
+      # X <- H(X)
+
+      if sbox.nil?
+        self.blockmix_salsa8(r, input_block)
+      else
+        self.blockmix_pwxform(r, input_block, sbox)
+      end
+    end
+
+    self.simd_unshuffle(input_block)
   end
 
-  def p2floor(x)
+  def self.sMix2(r, input_block, n, nloop, seq_write_memory, flags, sbox)
+    if !r.is_a?(Integer) || r <= 0 ||
+       !input_block.is_a?(Array) || input_block.count != 2 * r * 16 ||
+       !n.is_a?(Integer) || n <= 0 ||
+       !nloop.is_a?(Integer) || nloop < 0 ||
+       !seq_write_memory.is_a?(Array) || seq_write_memory.count < 2 * r * 16 * n
+      raise ArgumentError.new("Bad arguments to sMix2.")
+    end
 
+    self.simd_shuffle(input_block)
+
+    0.upto(nloop - 1) do |i|
+      if false
+        # TODO: ROM support
+      else
+        # XXX: bound check
+        j = self.integerify(r, input_block) & (n - 1)
+
+        # X <- X XOR V_j
+        0.upto(2 * r - 1) do |k|
+          # XXX: make this just one loop, as below in the write-back
+          0.upto(15) do |m|
+            input_block[16 * k + m] ^= seq_write_memory[2 * r * 16 * j + 16 * k + m]
+          end
+        end
+
+        if (flags & YESCRYPT_RW) != 0
+          0.upto(2 * r * 16 - 1) do |k|
+            seq_write_memory[2 * r * 16 * j + k] = input_block[k]
+          end
+        end
+      end
+
+      if sbox.nil?
+        self.blockmix_salsa8(r, input_block)
+      else
+        self.blockmix_pwxform(r, input_block, sbox)
+      end
+    end
+
+    self.simd_unshuffle(input_block)
   end
 
-  def wrap(x, i)
+  def self.blockmix_pwxform(r, b, sbox)
+    if !r.is_a?(Integer) || r <= 0 || !b.is_a?(Array) || b.count != 2 * r * 16 || !sbox.is_a?(Array)
+      raise ArgumentError.new("Bad arguments to blockmix_pwxform.");
+    end
 
+    # The number of pwx-size blocks in the input.
+    r1 = 2 * r * 16 / PWXWORDS
+
+    # Grab the last pwx-size block.
+    x = b[PWXWORDS * (r1 - 1), PWXWORDS]
+
+    # Loop over all of the pwx-size blocks.
+    0.upto(r1 - 1) do |i|
+      # If there's more than one pwx-size block.
+      if r1 > 1
+        # XOR the ith pwx-block into X
+        0.upto(PWXWORDS - 1) do |j|
+          x[j] ^= b[PWXWORDS * i + j]
+        end
+      end
+
+      # X <- pwxform(X)
+      self.pwxform(x, sbox)
+
+      # Store X into the ith pwx-block
+      0.upto(PWXWORDS - 1) do |j|
+        b[i * PWXWORDS + j] = x[j]
+      end
+    end
+
+    # Below, we operate on 64-byte blocks instead of pwx-size blocks.
+
+    i = (r1 - 1) * PWXWORDS / 16
+
+    bi = b[i * 16, 16]
+    self.salsa20_8_core_ints(bi)
+    0.upto(15) do |j|
+      b[i * 16 + j] = bi[j]
+    end
+
+    i += 1
+    while i < 2 * r
+      0.upto(15) do |j|
+        bi[j] = b[i * 16 + j] ^ bi[j]
+      end
+      self.salsa20_8_core_ints(bi)
+      0.upto(15) do |j|
+        b[i*16 + j] = bi[j]
+      end
+    end
   end
 
-  def sMix(n, r, t, p, pbkdf2_blocks, flags)
-
-  end
-
-  def sMix1(r, input_block, n, out_seq_write_memory, flags, sbox)
-
-  end
-
-  def sMix2(r, input_block, n, nloop, seq_write_memory, flags, sbox)
-
-  end
-
-  def blockmix_pwxform(r, b, sbox)
-
-  end
-
-  def Yescrypt.pwxform(b, sbox)
+  def self.pwxform(b, sbox)
     0.upto(PWXROUNDS - 1) do |i|
       0.upto(PWXGATHER - 1) do |j|
         xl = b[2*j*PWXSIMPLE + LO]
@@ -80,43 +437,89 @@ module Yescrypt
     end
   end
 
-  def Yescrypt.simd_shuffle_block(x)
+  # x is an array of 32-bit integers.
+  def self.simd_shuffle_block(x, offset = 0)
     tmp = Array.new(16)
     0.upto(15) do |i|
-      tmp[i] = x[i * 5 % 16]
+      tmp[i] = x[offset + i * 5 % 16]
     end
     0.upto(15) do |i|
-      x[i] = tmp[i]
+      x[offset + i] = tmp[i]
     end
   end
 
-  def Yescrypt.simd_unshuffle_block(x)
+  # x is an array of 32-bit integers.
+  def self.simd_unshuffle_block(x, offset = 0)
     tmp = Array.new(16)
     0.upto(15) do |i|
-      tmp[i * 5 % 16] = x[i]
+      tmp[i * 5 % 16] = x[offset + i]
     end
     0.upto(15) do |i|
-      x[i] = tmp[i]
+      x[offset + i] = tmp[i]
     end
   end
 
-  def simd_shuffle(b)
+  # b is an array of 32-bit integers whose length is divisible by 16
+  def self.simd_shuffle(b)
+    if !b.is_a?(Array) || b.count % 16 != 0
+      raise ArgumentError.new("Bad arguments to simd_unshuffle.")
+    end
 
+    0.upto(b.count / 16 - 1) do |i|
+      self.simd_shuffle_block(b, 16*i)
+    end
   end
 
-  def simd_unshuffle(b)
+  # b is an array of 32-bit integers whose length is divisible by 16
+  def self.simd_unshuffle(b)
+    if !b.is_a?(Array) || b.count % 16 != 0
+      raise ArgumentError.new("Bad arguments to simd_unshuffle.")
+    end
 
+    0.upto(b.count / 16 - 1) do |i|
+      self.simd_unshuffle_block(b, 16*i)
+    end
   end
 
-  def integerify(r, b)
-
+  # b is an array of 32-bit integers whose length is divisible by 16
+  def self.integerify(r, b)
+    # XXX: we can do full 64-bit result in ruby now
+    return b[16 * (2 * r - 1)]
   end
 
-  def blockmix_salsa8(r, b)
+  # b is an array of 32-bit integers of size 2 * r * 16
+  def self.blockmix_salsa8(r, b)
+    if !r.is_a?(Integer) || r <= 0 || !b.is_a?(Array) || b.count != 2*r*16
+      raise ArgumentError.new("Bad arguments to blockmix_salsa8")
+    end
 
+    x = b[16 * (2*r - 1), 16]
+
+    y = Array.new(16 * 2 * r)
+
+    0.upto(2 * r - 1) do |i|
+      0.upto(15) do |j|
+        x[j] ^= b[16*i + j]
+      end
+      self.salsa20_8_core_ints(x)
+      if i % 2 == 0
+        0.upto(15) do |j|
+          y[16 * (i/2) + j] = x[j]
+        end
+      else
+        0.upto(15) do |j|
+          # XXX: why + r ?
+          y[16 * (r + (i - 1)/2) + j] = x[j]
+        end
+      end
+    end
+
+    0.upto(b.count - 1) do |i|
+      b[i] = y[i]
+    end
   end
 
-  def Yescrypt.salsa20_core_ints(x)
+  def self.salsa20_8_core_ints(x)
     self.simd_unshuffle_block(x)
 
     copy = x.dup
@@ -147,7 +550,7 @@ module Yescrypt
     self.simd_shuffle_block(x)
   end
 
-  def Yescrypt.rot(int, rot)
+  def self.rot(int, rot)
     ((int << rot) | ((int >> (32 - rot)) & ((1 << rot) - 1))) & 0xffffffff
   end
 

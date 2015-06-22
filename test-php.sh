@@ -2,7 +2,6 @@
 
 # Build the testing tool.
 cd reference/yescrypt-v1/yescrypt/yescrypt-0.7.1/
-make clean
 make ref
 ./tester 'php ../../../../php/yescrypt_cli.php'
 

@@ -7,8 +7,22 @@ end
 
 case ARGV[0]
 when "yescrypt"
-  puts "Not implemented."
-  exit(false)
+  if ARGV.length != 10
+    puts "Wrong number of arguments for yescrypt"
+    exit(false)
+  end
+  result = Yescrypt.calculate(
+    [ARGV[1]].pack("H*"), # password
+    [ARGV[2]].pack("H*"), # salt
+    ARGV[3].to_i,       # N
+    ARGV[4].to_i,       # r
+    ARGV[5].to_i,       # p
+    ARGV[6].to_i,       # t
+    ARGV[7].to_i,       # g
+    ARGV[8].to_i,       # flags
+    ARGV[9].to_i        # dkLen
+  )
+  print result
 when "pwxform"
   if ARGV.length != 3
     puts "Wrong number of arguments for pwxform"
@@ -30,7 +44,7 @@ when "salsa20_8"
 
   binary = [ARGV[1]].pack("H*")
   ints = binary.unpack("VVVVVVVVVVVVVVVV")
-  Yescrypt.salsa20_core_ints(ints)
+  Yescrypt.salsa20_8_core_ints(ints)
   binary = ints.pack("VVVVVVVVVVVVVVVV")
   print binary
 else

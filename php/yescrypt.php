@@ -432,7 +432,7 @@ abstract class Yescrypt {
     {
         $flat = implode('', $B);
 
-        // r1 <- 128 * r / PWXbytes
+        // r_1 <- 128 * r / PWXbytes
         $r1 = (int)floor(128 * $r / YESCRYPT_PWXBYTES);
 
         // X <- B'_{r_1 - 1}
@@ -686,7 +686,7 @@ abstract class Yescrypt {
             }
             $t = $x ^ $B[$i];
             $x = self::salsa20_8_core_binary($t);
-            if ($i % 2 == 0) {
+            if ($i % 2 === 0) {
                 $y[$i / 2] = $x;
             } else {
                 $y[$r + ($i - 1)/2] = $x;
