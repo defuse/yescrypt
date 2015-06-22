@@ -772,7 +772,7 @@ abstract class Yescrypt {
         if (!is_int($int) || !is_int($rot) || $rot <= 0 || $rot >= 32) {
             throw new DomainException("bad parameters given to R");
         }
-        return (($int << $rot) | (($int >> (32 - $rot)) & (pow(2, $rot) - 1))) & 0xffffffff;
+        return (($int << $rot) | ((($int >> 1) & 0x7fffffff) >> (31 - $rot))) & 0xffffffff;
     }
 
     /*
