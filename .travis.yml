@@ -1,11 +1,18 @@
 language: php
-ruby:
-    - "5.6"
-    - "5.5"
+
+matrix:
+    include:
+        - ruby: 2.0
+          env: TORUN=ruby
+        - ruby: 2.1
+          env: TORUN=ruby
+        - php: 5.5
+          env: TORUN=php
+        - php: 5.6
+          env: TORUN=php
 
 script:
-    - ./test-ruby.sh
-    - ./test-php.sh
+    - ./run.sh
 
-sudo: true
-paranoid_mode: false
+#sudo: true
+#paranoid_mode: false
