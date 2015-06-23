@@ -338,6 +338,40 @@ int test_pwxform(const char *command)
     return 0;
 }
 
+typedef struct YescryptTestCase {
+    const char *passphrase;
+    size_t passphrase_len;
+    const char *salt;
+    size_t salt_len;
+    int N;
+    int r;
+    int p;
+    int t;
+    int g;
+    int dkLen;
+    // We automatically test all flag settings compatible with the other
+    // parameters.
+} testcase_t;
+
+testcase_t custom_cases[] = {
+    // Passphrase                           Salt                      N  r  p  t  g  dkLen
+    // ------------------------------------------------------------------------------------
+    // r=8
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 8, 1, 0, 0, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 4, 8, 1, 0, 0, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 8, 2, 0, 0, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 8, 1, 1, 0, 32 },
+    // r=16
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 16, 1, 0, 0, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 4, 16, 1, 0, 0, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 16, 2, 0, 0, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 16, 1, 1, 0, 32 },
+    // empty passphrase
+    { "",              0,                   TEST_SALT, TEST_SALT_LEN, 4, 4, 2, 0, 0, 32 },
+    // empty salt
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, "",        0,             4, 4, 2, 0, 0, 32 },
+};
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -368,6 +402,35 @@ int main(int argc, char **argv)
     //    0x100, 0x200000 / 0x100, 1, 1, 0, YESCRYPT_RW,
     //    16
     //);
+
+    for (i = 0; i < sizeof(custom_cases) / sizeof(testcase_t); i++) {
+        if (custom_cases[i].t == 0) {
+            fail |= test_yescrypt(
+                argv[1],
+                (const uint8_t *)custom_cases[i].passphrase, custom_cases[i].passphrase_len,
+                (const uint8_t *)custom_cases[i].salt, custom_cases[i].salt_len,
+                custom_cases[i].N, custom_cases[i].r, custom_cases[i].p, custom_cases[i].t,
+                custom_cases[i].g, 0, custom_cases[i].dkLen
+            );
+        }
+
+        if (custom_cases[i].N/custom_cases[i].p > 1) {
+            fail |= test_yescrypt(
+                argv[1],
+                (const uint8_t *)custom_cases[i].passphrase, custom_cases[i].passphrase_len,
+                (const uint8_t *)custom_cases[i].salt, custom_cases[i].salt_len,
+                custom_cases[i].N, custom_cases[i].r, custom_cases[i].p, custom_cases[i].t,
+                custom_cases[i].g, YESCRYPT_RW, custom_cases[i].dkLen
+            );
+        }
+        fail |= test_yescrypt(
+            argv[1],
+            (const uint8_t *)custom_cases[i].passphrase, custom_cases[i].passphrase_len,
+            (const uint8_t *)custom_cases[i].salt, custom_cases[i].salt_len,
+            custom_cases[i].N, custom_cases[i].r, custom_cases[i].p, custom_cases[i].t,
+            custom_cases[i].g, YESCRYPT_WORM, custom_cases[i].dkLen
+        );
+    }
 
     for (N = 2; N <= TEST_MAX_N; N = N << 1) {
         for (r = 1; r <= TEST_MAX_R; r++) {

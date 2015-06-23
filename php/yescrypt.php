@@ -100,6 +100,10 @@ abstract class Yescrypt {
             throw new DomainException("r * p is too big.");
         }
 
+        if ( ($flags & YESCRYPT_RW) !== 0 && n/p <= 1 ) {
+            throw new DomainException("YESCRYPT_RW requires N/p >= 2");
+        }
+
         if ($flags === 0 && $t !== 0) {
             throw new DomainException("Can't use t > 0 without flags.");
         }

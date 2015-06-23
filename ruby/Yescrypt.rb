@@ -96,6 +96,10 @@ module Yescrypt
     # We don't bounds check 128 * r * p here, as we would normally do, since
     # Ruby's integers automatically get converted to Bignums upon overflow.
 
+    if (flags & YESCRYPT_RW) != 0 && n/p <= 1
+      raise ArgumentError.new("YESCRYPT_RW requires N/p >= 2")
+    end
+
     if (flags & YESCRYPT_RW) != 0 && p >= 1 && n/p >= 0x100 && n/p * r >= 0x20000
       password = self.calculate(password, salt, n >> 6, r, p, 0, 0, flags | YESCRYPT_PREHASH, 32)
     end
@@ -302,6 +306,7 @@ module Yescrypt
        !input_block.is_a?(Array) || input_block.count != 2 * r * 16 ||
        !n.is_a?(Integer) || n <= 0 ||
        !out_seq_write_memory.is_a?(Array) || out_seq_write_memory.count != 2 * r * 16 * n
+      STDERR.puts "HEYYYY #{r} #{n} #{out_seq_write_memory.count}"
       raise ArgumentError.new("Bad arguments to sMix1.")
     end
 
