@@ -6,3 +6,6 @@ ruby:
 script:
     - ./test-rubies.sh
     - ./test-phps.sh
+
+sudo: true
+paranoid_mode: false
