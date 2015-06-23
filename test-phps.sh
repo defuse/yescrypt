@@ -19,3 +19,7 @@ sudo apt-get install php5=5.5\*
 sudo apt-get remove php5
 sudo apt-get install php5=5.6\*
 ./test-php.sh
+
+# NOTE: After looking at the output, the problem is that it's only 5.3 that's
+# available in apt-get... have to figure out how it makes the other versions
+# available when the language is PHP.
