@@ -8,7 +8,7 @@ matrix:
         - ruby: 2.1
           env: TORUN=ruby
         - ruby: 2.0
-          env: torun=ruby
+          env: TORUN=ruby
         - ruby: 1.9.3
           env: TORUN=ruby
         - ruby: 1.9.2

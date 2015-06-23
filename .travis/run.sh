@@ -11,4 +11,7 @@ case "${TORUN}" in
         echo "Running the PHP tests..."
         ./test-php.sh
         ;;
+    *)
+        exit 1
+        ;;
 esac
