@@ -1,5 +1,5 @@
 # Ignore this line, look at the matrix: thing below.
-language: php
+language: ruby
 
 matrix:
     include:
@@ -25,18 +25,13 @@ matrix:
         - ruby: ree
           env: TORUN=ruby
         # PHP
-        - php: 7
-          env: TORUN=php
-        - php: 5.6
-          env: TORUN=php
-        - php: 5.5
-          env: TORUN=php
-        - php: 5.4
-          env: TORUN=php
-        - php: 5.3
-          env: TORUN=php
-        - php: hhvm
-          env: TORUN=php
+        - language: php
+            php:
+                - 7
+                - 5.6
+                - 5.4
+                - 5.3
+                - hhvm
 
 script:
     - .travis/run.sh
