@@ -1,5 +1,5 @@
 # Ignore this line, look at the matrix: thing below.
-language: ruby
+language: php
 
 matrix:
     include:
