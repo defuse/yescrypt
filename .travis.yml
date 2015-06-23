@@ -1,18 +1,27 @@
+# Ignore this line, look at the matrix: thing below.
 language: php
 
 matrix:
     include:
-        - ruby: 2.0
+        - ruby: 2.2
           env: TORUN=ruby
         - ruby: 2.1
           env: TORUN=ruby
+        - ruby: 2.0
+          env: torun=ruby
+        - ruby: 1.9.3
+          env: TORUN=ruby
+        - ruby: 1.9.2
+          env: TORUN=ruby
+        - php: 5.6
+          env: TORUN=php
         - php: 5.5
           env: TORUN=php
-        - php: 5.6
+        - php: 5.4
           env: TORUN=php
 
 script:
-    - ./run.sh
+    - .travis/run.sh
 
 #sudo: true
 #paranoid_mode: false
