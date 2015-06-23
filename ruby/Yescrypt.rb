@@ -10,10 +10,10 @@
 #
 # Compatibility: TODO
 #
-# Limitations: On systems where Fixnums can not hold 48-bit unsigned integers,
-# the automatic switching between Fixnums and Bignums may create a side channel
-# that would allow an attacker to extract a fast verifier, using attacks such as
-# FLUSH+RELOAD.
+# Limitations: On systems where Fixnums can not hold 64-bit unsigned integers
+# (this includes 64-bit systems since Fixnums are *signed*), the automatic
+# switching between Fixnums and Bignums may create a side channel that would
+# allow an attacker to extract a fast verifier.
 #
 
 require 'openssl'
