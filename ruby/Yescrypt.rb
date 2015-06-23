@@ -1,3 +1,21 @@
+# Yescrypt.rb
+#
+# This software is Copyright (c) 2015 Taylor Hornby <havoc@defuse.ca>,
+# and it is hereby released to the general public under the following terms:
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted.
+# 
+# There's ABSOLUTELY NO WARRANTY, express or implied.
+
+#
+# Compatibility: TODO
+#
+# Limitations: On systems where Fixnums can not hold 48-bit unsigned integers,
+# the automatic switching between Fixnums and Bignums may create a side channel
+# that would allow an attacker to extract a fast verifier, using attacks such as
+# FLUSH+RELOAD.
+#
+
 require 'openssl'
 
 module Yescrypt
@@ -71,12 +89,12 @@ module Yescrypt
       raise NotImplementedError.new("g > 0 is not supported yet.")
     end
 
-    # XXX: bounds check on 128 * r * p omitted because of Ruby's automatic
-    # BigInt conversion... maybe we want to check anyway to avoid side channels?
-
     if flags == 0 && t != 0
       raise ArgumentError.new("Can't use t > 0 without flags.")
     end
+
+    # We don't bounds check 128 * r * p here, as we would normally do, since
+    # Ruby's integers automatically get converted to Bignums upon overflow.
 
     if (flags & YESCRYPT_RW) != 0 && p >= 1 && n/p >= 0x100 && n/p * r >= 0x20000
       password = self.calculate(password, salt, n >> 6, r, p, 0, 0, flags | YESCRYPT_PREHASH, 32)
@@ -98,8 +116,10 @@ module Yescrypt
     end
 
     if (flags & YESCRYPT_RW) != 0
+      # New, YESCRYPT_RW parallelism.
       self.sMix(n, r, t, p, b, flags)
     else
+      # Classic scrypt parallelism.
       0.upto(p - 1) do |i|
         b0 = b[i * 2 * r * 16, 2 * r * 16]
         self.sMix(n, r, t, 1, b0, flags)
@@ -111,19 +131,23 @@ module Yescrypt
 
     new_salt = b.pack("V*")
 
+    # Make sure we get at least 32 bytes.
     result = self.pbkdf2_sha256(password, new_salt, 1, [dkLen, 32].max)
 
     if flags != 0 && (flags & YESCRYPT_PREHASH) == 0
+      # Here's why we needed at least 32 bytes.
       client_value = result[0, 32]
 
       clientkey = self.hmac_sha256("Client Key", client_value)
       storedkey = self.sha256(clientkey)
 
+      # Update the first 32 bytes of the result.
       0.upto([dkLen, 32].min - 1) do |i|
         result[i] = storedkey[i]
       end
     end
 
+    # We might have gotten more than we needed, above, so truncate.
     return result[0, dkLen]
   end
 
@@ -188,6 +212,7 @@ module Yescrypt
   end
 
   def self.sMix(n, r, t, p, pbkdf2_blocks, flags)
+
     if !n.is_a?(Integer) || n <= 1 ||
        !r.is_a?(Integer) || r <= 0 ||
        !t.is_a?(Integer) || t <  0 ||
@@ -196,6 +221,7 @@ module Yescrypt
       raise ArgumentError.new("Bad arguments to sMix.")
     end
 
+    # There's one sbox for each thread.
     sboxes = Array.new(p) { nil }
 
     little_n = n/p
@@ -213,13 +239,10 @@ module Yescrypt
     nloop_all = nloop_all + (nloop_all & 1)
     nloop_rw = nloop_rw - (nloop_rw & 1)
 
-    # XXX: maybe bounds check nloop_rw here as in PHP?
+    # Ordinarily, we'd have to check nloop_all for overflow, but Ruby does
+    # automatic Bignums.
 
-    # XXX: check this
     v = Array.new(n * 2 * r * 16)
-
-    # XXX: if this doesn't work, first thing to try: did I confuse little_n and
-    # n or little_v and v anywhere?
 
     0.upto(p - 1) do |i|
       little_v = i * little_n
@@ -239,7 +262,6 @@ module Yescrypt
           pbkdf2_blocks[i * 2 * r * 16 + j] = x[j]
         end
       end
-
 
       block_i = pbkdf2_blocks[2 * r * 16 * i, 2 * r * 16]
       # XXX: try to only allocate this once (or twice)
@@ -294,7 +316,11 @@ module Yescrypt
       if false
         # TODO: ROM support
       elsif (flags & YESCRYPT_RW) != 0 && i > 1
-        # XXX bound check
+        if i >= 1 << 30
+          # We need this because our integerify() isn't fully implemented. See
+          # the comment there for reasons why.
+          raise ArgumentError.new("Value if i is too big for our integerify(), in sMix1")
+        end
         j = self.wrap(self.integerify(r, input_block), i)
         # X <- X XOR V_j
         0.upto(2 * r * 16 - 1) do |k|
@@ -329,15 +355,16 @@ module Yescrypt
       if false
         # TODO: ROM support
       else
-        # XXX: bound check
+        if n >= 1 << 30
+          # We need this because our integerify() isn't fully implemented. See
+          # the comment there for reasons why.
+          raise ArgumentError.new("Value if i is too big for our integerify(), in sMix2")
+        end
         j = self.integerify(r, input_block) & (n - 1)
 
         # X <- X XOR V_j
-        0.upto(2 * r - 1) do |k|
-          # XXX: make this just one loop, as below in the write-back
-          0.upto(15) do |m|
-            input_block[16 * k + m] ^= seq_write_memory[2 * r * 16 * j + 16 * k + m]
-          end
+        0.upto(2 * r * 16 - 1) do |k|
+          input_block[k] ^= seq_write_memory[2 * r * 16 * j + k]
         end
 
         if (flags & YESCRYPT_RW) != 0
@@ -422,8 +449,6 @@ module Yescrypt
           bjklo = b[2 * (j * PWXSIMPLE + k) + LO]
           bjkhi = b[2 * (j * PWXSIMPLE + k) + HI]
 
-          # XXX: side channel on small-int systems (over threshold = bignum)
-
           s0p0k = sbox[2 * (p0 * PWXSIMPLE + k) + LO] |
                   (sbox[2 * (p0 * PWXSIMPLE + k) + HI] << 32)
           s1p1k = sbox[sbox.count/2 + 2 * (p1 * PWXSIMPLE + k) + LO] |
@@ -483,7 +508,11 @@ module Yescrypt
 
   # b is an array of 32-bit integers whose length is divisible by 16
   def self.integerify(r, b)
-    # XXX: we can do full 64-bit result in ruby now
+    # I'm intentionally *not* getting the full 64 bits here.
+    # The first reason is that it's code that's unlikely to be exercised in
+    # practice, and unlikely to be tested. The second reason is that, even on
+    # a 64-bit system, whether or not the result is a Fixnum or Bignum leaks one
+    # bit, and that could be used to construct a faster verifier.
     return b[16 * (2 * r - 1)]
   end
 
@@ -508,7 +537,6 @@ module Yescrypt
         end
       else
         0.upto(15) do |j|
-          # XXX: why + r ?
           y[16 * (r + (i - 1)/2) + j] = x[j]
         end
       end
