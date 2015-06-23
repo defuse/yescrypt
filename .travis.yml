@@ -5,4 +5,4 @@ ruby:
 
 script:
     - ./test-rubies.sh
-    - ./test-php.sh
+    - ./test-phps.sh
