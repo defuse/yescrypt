@@ -1,43 +1,11 @@
 # Ignore this line, look at the matrix: thing below.
 language: php
 
-matrix:
-    include:
-        # RUBY
-        - ruby: 2.2
-          env: TORUN=ruby
-        - ruby: 2.1
-          env: TORUN=ruby
-        - ruby: 2.0
-          env: TORUN=ruby
-        - ruby: 1.9.3
-          env: TORUN=ruby
-        - ruby: 1.9.2
-          env: TORUN=ruby
-        - ruby: 1.8.7
-          env: TORUN=ruby
-        - ruby: jruby-18mode
-          env: TORUN=ruby
-        - ruby: jruby-19mode
-          env: TORUN=ruby
-        - ruby: rbx-2
-          env: TORUN=ruby
-        - ruby: ree
-          env: TORUN=ruby
-        # PHP
-        - php: 7
-          env: TORUN=php
-        - php: 5.6
-          env: TORUN=php
-        - php: 5.5
-          env: TORUN=php
-        - php: 5.4
-          env: TORUN=php
-        - php: 5.3
-          env: TORUN=php
-        - php: hhvm
-          env: TORUN=php
+php:
+    - 5.6
+    - 5.5
 
 script:
-    - .travis/run.sh
+    - test-php.sh
+    - test-ruby.sh
 
