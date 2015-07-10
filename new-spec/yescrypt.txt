@@ -1,0 +1,174 @@
+
+              The yescrypt Password-Based Key Derivation Function
+                                     DRAFT
+
+                     Alexander Peslyak <solar@openall.com>
+                        Taylor Hornby <havoc@defuse.ca>
+
+                                 July 10, 2015
+
+Abstract
+
+    This document defines the yescrypt algorithm. The authoritative
+    specification of the yescrypt algorithm can be found in [1] and the
+    reference implementation can be found in [2]. Here, we specify yescrypt
+    independently of scrypt [3] to ease implementation.
+
+Copyright
+
+    - TODO: Decide on the copyright of this document. It will probably be
+      some kind of permissive license.
+
+1. Introduction
+
+    Yescrypt [1] is a password-based key derivation function. It applies slow
+    cryptographic operations to a password, converting it into a stronger key
+    that can be used to perform encryption, or can be stored to validate the
+    password in the future.
+
+    Yescrypt is based on scrypt by Colin Percival of Tarsnap [3].
+
+    In the next section, we describe the parameters yescrypt takes. After that,
+    we describe the constants and data types used by the algorithm. Finally, we
+    describe yescrypt in terms of functions and give pseudocode for their
+    implementations.
+
+    - TODO: We probably need to say more here.
+
+2. Parameters
+
+    The yescrypt algorithm accepts the following parameters:
+
+        Password    - The password from which to derive the key.
+
+        Salt        - A random string that is unique to this password.
+
+        N           - Increasing N increases running time and memory use.
+
+        R           - Increasing R increases the size of the blocks operated on
+                      by the algorithm (and thus increases memory use).
+
+        P           - Parallelism factor.
+
+        T           - Increasing T increases running time without increasing
+                      memory use.
+
+        G           - The number of times the hash has been "upgraded."
+
+        Flags       - Has the value 0, YESCRYPT_RW, or YESCRYPT_WORM.
+
+        [Rom]       - (Optional) An array of ??? what constraints TODO
+
+        DKLen       - The length of key to derive (output).
+
+
+    Upon completion, yescrypt returns an array of DKLen bytes, which is a key
+    derived from the Password and Salt according to the other parameters.
+
+    - TODO: describe the limitations on the parameters here, and what G is.
+
+3. Constants
+
+3.1. Independent Constants
+
+    PWXSIMPLE = 2
+    PWXGATHeR = 4
+    PWXROUNDS = 6
+    SWIDTH    = 8
+
+3.2. Derived Constants
+
+    The derived constants are derived from the independent constants.
+
+    PWXBYTES = PWXGATHER * PWXSIMPLE * 8
+    PWXWORDS = PWXBYTES / 4
+    SBYTES   = 2 * (1 << SWIDTH) * PWXSIMPLE * 8
+    SWORDS   = SBYTES / 4
+    SMASK    = ((1 << SWIDTH) - 1) * PWXSIMPLE * 8
+    RMIN     = (PWXBYTES + 127) / 128
+
+4. Data Types
+
+    The fundamental data type operated on by yescrypt is little-endian encoded
+    32-bit integers. For the remainder of this document, we refer to them as
+    "words."
+
+    A "cell" is an array of 16 words.
+
+    A "block" is an array of 2*R cells, where R is a yescrypt parameter as
+    defined above.
+
+5. Functions
+
+5.1. yescrypt
+
+    Input:
+
+        Password
+
+        Salt
+
+        N
+
+        R
+
+        P
+
+        T
+
+        G
+
+        Flags
+
+        [Rom]
+
+        DKLen
+
+    Output:
+
+        DK          - A key derived from the password and salt according to the
+                      other parameters.
+
+    Steps:
+
+        - TODO: Write the steps
+
+5.2. sMix
+
+5.3. sMix1
+
+5.4. sMix2
+
+5.5. blockmix_pwxform
+
+5.6. pwxform
+
+5.7. blockmix_salsa8
+
+5.8. sala20_8
+
+5.9. fNloop
+
+5.10. p2floor
+
+5.11. wrap
+
+5.12. integerify
+
+6. Test Vectors
+
+    - TODO: auto-generate test vectors from the reference implementation, and
+      cross-check them with my implementations
+
+7. Security Considerations
+
+    - TODO: Note that non-optimized implementations are essentially insecure, so
+      the implementer needs to know their platform and might need to change
+      their implementation from what we implicitly assume (e.g. 32-bit integers)
+      in order to be fast.
+
+8. References
+
+    [1] https://password-hashing.net/submissions/specs/yescrypt-v1.pdf
+    [2] https://password-hashing.net/submissions/yescrypt-v1.tar.gz
+    [3] https://www.tarsnap.com/scrypt/scrypt.pdf
