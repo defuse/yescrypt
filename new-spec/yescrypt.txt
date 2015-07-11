@@ -69,7 +69,7 @@ Copyright
 
 3. Constants
 
-3.1. Independent Constants
+3.1. Configurable Constants
 
     PWXSIMPLE = 2
     PWXGATHeR = 4
@@ -78,7 +78,7 @@ Copyright
 
 3.2. Derived Constants
 
-    The derived constants are derived from the independent constants.
+    The derived constants are derived from the configurable constants.
 
     PWXBYTES = PWXGATHER * PWXSIMPLE * 8
     PWXWORDS = PWXBYTES / 4
@@ -97,6 +97,13 @@ Copyright
 
     A "block" is an array of 2*R cells, where R is a yescrypt parameter as
     defined above.
+
+    - TODO: We need to specify the type for integers holding counters, loop
+      limits, memory sizes, etc... scrypt needs 64-bit, but maybe for the sake
+      of specification we should just assume unbounded integers? No, I think it
+      is important, since sanity checks early on depend on the integer sizes
+      being used, to avoid overflow, and it's important for developers to know
+      that.
 
 5. Functions
 
@@ -129,31 +136,333 @@ Copyright
         DK          - A key derived from the password and salt according to the
                       other parameters.
 
+    Preconditions:
+
+        - TODO: The preconditions here are kind of complex, think carefully
+          (especially about the flags)
+
     Steps:
 
-        - TODO: Write the steps
+        if
+            YESCRYPT_RW flag is set AND
+            P >= 1 AND
+            N/P >= 0x100 AND
+            (N/P) * R >= 0x20000
+        then
+            Password = yescrypt(
+                Password,
+                Salt,
+                N / 2^6,
+                R,
+                P,
+                0,
+                0,
+                Flags | YESCRYPT_PREHASH,
+                32
+            )
+        end if
+
+        if YESCRYPT_PREHASH flag is set then
+            Password = HMAC-SHA256(Password, "yescrypt-prehash")
+        else if YESCRYPT_RW flag is set OR YESCRYPT_WORM flag is set
+            Password = HMAC-SHA256(Password, "yescrypt")
+        end if
+
+        B[0], B[1], ..., B[P-1] = PBKDF2-SHA256(Password, Salt, 1, P * 128 * R)
+
+        if YESCRYPT_RW flag is set OR YESCRYPT_WORM flag is set then
+            Password = The first 32 bytes of B[0]
+        end if
+
+        if YESCRYPT_RW flag is set then
+            sMix(N, R, T, P, B, Flags)
+        else
+            for i = 0 to P - 1 do
+                sMix(N, R, T, 1, B[i], Flags)
+            end
+        end if
+
+        Result = PBKDF2-SHA256(Password, B, 1, max(DKLen, 32))
+
+        if
+            (YESCRYPT_RW flag is set OR YESCRYPT_WORM flag is set) AND
+            YESCRYPT_PREHASH flag is *not* set
+        then
+            ClientValue = First 32 bytes of Result
+            ClientKey = HMAC-SHA256("Client Key", ClientValue)
+            StoredKey = SHA256(ClientKey)
+
+            Set the first 32 bytes of Result to the StoredKey
+        end if
+
+        return the first dkLen bytes of Result
 
 5.2. sMix
 
+    Input:
+
+        N
+
+        R
+
+        T
+
+        P
+
+        Block
+
+        Flags
+
+    Output:
+
+        The Block parameter is modified in-place.
+
+    Preconditions:
+
+    Steps:
+
 5.3. sMix1
+
+    Input:
+
+        R
+
+        Block
+
+        N
+
+        OutputBlocks
+
+        Flags
+
+        Sbox
+
+    Output:
+
+        The Block and OutputBlocks parameters are modified in-place.
+
+    Preconditions:
+
+    Steps:
+
 
 5.4. sMix2
 
+    Input:
+
+        R
+
+        Block
+
+        N
+
+        Nloop
+
+        OutputBlocks
+
+        Flags
+
+        Sbox
+
+    Output:
+
+        The Block and OutputBlocks parameters are modified in-place.
+
+    Preconditions:
+
+    Steps:
+
+
 5.5. blockmix_pwxform
+
+    Input:
+
+        R
+
+        Block
+
+        Sbox
+
+    Output:
+
+        The Block parameter is modified in-place.
+
+    Preconditions:
+
+    Steps:
+
 
 5.6. pwxform
 
+    Input:
+
+        Block
+
+        Sbox
+
+    Output:
+
+        The Block parameter is modified in-place.
+
+    Preconditions:
+
+    Steps:
+
+
 5.7. blockmix_salsa8
+
+    Input:
+
+        R
+
+        Block
+
+    Output:
+
+        The Block parameter is modified in-place.
+
+    Preconditions:
+
+    Steps:
+
 
 5.8. sala20_8
 
+    Input:
+
+        Words - An array of 16 words.
+
+    Output:
+
+        The Words parameter is modified in-place.
+
+    Preconditions:
+
+    Steps:
+
+
 5.9. fNloop
+
+    Input:
+
+        N
+
+        T
+
+        Flags
+
+    Output:
+
+        Returns an integer.
+
+    Preconditions:
+
+    Steps:
+
 
 5.10. p2floor
 
+    Input:
+
+        X   - An integer.
+
+    Output:
+
+        Returns an integer.
+
+    Preconditions:
+
+    Steps:
+
+
 5.11. wrap
 
+    Input:
+
+        X
+
+        L
+
+    Output:
+
+        Returns an integer.
+
+    Preconditions:
+
+    Steps:
+
 5.12. integerify
+
+    Input:
+
+        R
+
+        Block
+
+    Output:
+
+        Returns an integer.
+
+    Preconditions:
+
+    Steps:
+
+5.13. HMAC-SHA256
+
+    Input:
+
+        Key
+
+        Message
+
+    Output:
+
+        A 32-byte result.
+
+    Preconditions:
+
+    Steps:
+
+        - TODO: find the right HMAC reference
+
+5.14. PBKDF2-SHA256
+
+    Input:
+
+        Password
+
+        Salt
+
+        Iterations
+
+        DKLen
+
+    Output:
+
+        A DKLen-byte result.
+
+    Preconditions:
+
+    Steps:
+
+        - TODO: find the right PBKDF2 reference
+
+5.15. SHA256
+
+    Input:
+
+        Message
+
+    Output:
+
+        A 32-byte result.
+
+    Preconditions:
+
+
+    Steps:
+
+        - TODO: find the right SHA256 reference
 
 6. Test Vectors
 
