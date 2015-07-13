@@ -9,22 +9,27 @@
 
 Abstract
 
-    This document defines the yescrypt algorithm. The authoritative
+    This document describes the yescrypt algorithm. The authoritative
     specification of the yescrypt algorithm can be found in [1] and the
-    reference implementation can be found in [2]. Here, we specify yescrypt
-    independently of scrypt [3] to ease implementation.
+    reference implementation can be found in [2]. Yescrypt is based on Colin
+    Percival's scrypt algorithm [3]. This document specifies yescrypt
+    independently of scrypt, so that it may serve as an implementer's guide.
 
 Copyright
 
-    - TODO: Decide on the copyright of this document. It will probably be
-      some kind of permissive license.
+    This document is Copyright (c) 2015 Alexander Peslyak and Taylor Hornby.
+
+    The authors agree to grant third parties the irrevocable right to copy, use
+    and distribute this entire document or any portion of it, with or without
+    modification, in any medium, without royalty, provided that, unless separate
+    permission is granted, redistributed modified works do not contain
+    misleading author, version, name of work, or endorsement information.
 
 1. Introduction
 
     Yescrypt [1] is a password-based key derivation function. It applies slow
-    cryptographic operations to a password, converting it into a stronger key
-    that can be used to perform encryption, or can be stored to validate the
-    password in the future.
+    cryptographic operations to a password and salt, creating a key suitable for
+    performing encryption or storage to validate the password in the future.
 
     Yescrypt is based on scrypt by Colin Percival of Tarsnap [3].
 
@@ -32,6 +37,11 @@ Copyright
     we describe the constants and data types used by the algorithm. Finally, we
     describe yescrypt in terms of functions and give pseudocode for their
     implementations.
+
+    The next section describes the input parameters yescrypt takes, and how
+    yescrypt should be used. The following sections describe the algorithm
+    itself, first by defining the constants and data types, and then by
+    specifying the algorithm in pseudocode.
 
 2. Parameters
 
@@ -51,27 +61,70 @@ Copyright
         T           - Increasing T increases running time without increasing
                       memory use.
 
-        G           - The number of times the hash has been "upgraded."
+        G           - The number of times the hash has been "upgraded." This is
+                      used for strengthening stored password hashes without
+                      requiring knowledge of the original password.
 
-        Flags       - Has the value 0, YESCRYPT_RW, or YESCRYPT_WORM.
+        Flags       - Flags enabling/disabling yescrypt features.
 
-        [Rom]       - (Optional) An array of ??? what constraints TODO
+        [Rom]       - Read-only memory that the resulting key will be made to
+                      depend on.
 
         DKLen       - The length of key to derive (output).
 
     Upon completion, yescrypt returns an array of DKLen bytes, which is a key
     derived from the Password and Salt according to the other parameters.
 
-    - TODO: describe the limitations on the parameters here, and what G is.
+    The parameters must be of the following types and must conform to the
+    following restrictions.
 
-    - TODO: Explain what will overflow, etc when which parameters are too big.
+        Password    - A byte array of arbitrary length.
+
+        Salt        - A byte array of arbitrary length.
+
+        N           - An integer power of two, strictly greater than 1.
+
+        R           - An integer strictly greater than zero.
+
+        P           - An integer strictly greater than zero.
+
+        T           - An integer greater than or equal to zero.
+
+        G           - An integer greater than or equal to zero.
+
+        Flags       - Either 0, YESCRYPT_RW, or YESCRYPT_WORM.
+
+        [Rom]       - Read-only memory supporting fast random access.
+
+    In concrete implementations, there will be further restrictions to these
+    values, as values computed from them may overflow the system's native
+    integer types. It is up to the programmer to determine these limitations and
+    check for them.
+
+    - TODO: If we have time: It would be really nice to write out all those
+      limitations here, for e.g. 32-bit signed/unsigned and 64-bit
+      signed/unsigned integers, so that they know what to check to ensure
+      overflow doesn't happen.
+
+    - TODO: There is actually a hard limit from the algorithm on some of these,
+      because integerify() only gets 64 bits.
+
+    - TODO: I think I'm missing some other constraints... see the cases that the
+      tests have to skip. Are those really required or just what the reference
+      algorithm chose not to implement?
+
+    - TODO: We're forgetting YESCRYPT_PREHASH in the 'Flags' thing above.
 
 3. Constants
 
-3.1. Configurable Constants
+    The yescrypt algorithm depends on several constants. These contstants are
+    not parameters to the algorithm. They are fixed at compile-time, and it is
+    recommended to use the default values as specified here.
 
-    - TODO: We can simplify the description a lot if we assume these are fixed
-      and unchanging (i.e. PWXWORDS == 16 which is a 'cell')
+    The configurable constants may be changed independently. The derived
+    constants are computed from the configurable constants.
+
+3.1. Configurable Constants
 
     PWXSIMPLE = 2
     PWXGATHER = 4
@@ -91,24 +144,41 @@ Copyright
 
 4. Data Types
 
-    The fundamental data type operated on by yescrypt is little-endian encoded
-    32-bit integers. For the remainder of this document, we refer to them as
-    "words."
+    Yescrypt operates on arrays of little-endian encoded 32-bit unsigned
+    integers. For the remainder of this document, we refer to 32-bit unsigned
+    integers as "words."
 
-    A "cell" is an array of 16 words.
+    Yescrypt operates on groups of words at a time, so it is useful to define
+    terminology for the sizes of these groups. A "cell" will refer to an array
+    of 16 words. A "block" will refer to an array of 2*R cells, where R is
+    a yescrypt parameter as defined above.
 
-    A "block" is an array of 2*R cells, where R is a yescrypt parameter as
-    defined above.
+    For example, if B is a block, then B[0] will refer to the first cell in the
+    block, and B[1] will refer to the second cell in the block. B[0][0] will
+    refer to the first word in the first cell of B, and B[0][1] will refer to
+    the second word in the first cell of B.
 
-    We assume integer parameters and loop counters are contained in 64-bit
-    unsigned integers. The necessary overflow checks have been omitted from the
-    psuedocode in this document.
+    Additionally, an "sbox" refers to an array of SWORDS words.
+
+    - TODO: describe the "views" thing with PWXWORDS?
+
+    Whenever necessary, we assume integer parameters and loop counters are
+    contained in 64-bit unsigned integers. Overflow checks have been omitted
+    from the psuedocode in this document, but are necessary in real
+    implementations.
 
 5. Functions
 
+    This section describes each part of the yescrypt algorithm as a function.
+    For each function, we specify the input parameters and precondition
+    constraints they must satisfy. We also specify the output and the properties
+    it should satisfy given that the preconditions were satisfied. Note that
+    some of the functions return values by modifying one of their input
+    parameters. The functions' actions are specified in pseudocode.
+
 5.1. yescrypt
 
-    Input:
+    Input (See Section 2 for explanations and constraints):
 
         Password
 
@@ -137,8 +207,7 @@ Copyright
 
     Preconditions:
 
-        - TODO: The preconditions here are kind of complex, think carefully
-          (especially about the flags)
+        - See Section 2.
 
     Steps:
 
@@ -200,17 +269,17 @@ Copyright
 
     Input:
 
-        N
+        N       - An integer power of two strictly greater than one.
 
-        R
+        R       - An integer strictly greater than zero.
 
-        T
+        T       - An integer greater than or equal to zero.
 
-        P
+        P       - An integer strictly greater than zero.
 
-        Blocks
+        Blocks  - An array of P blocks.
 
-        Flags
+        Flags   - TODO
 
     Output:
 
@@ -251,7 +320,7 @@ Copyright
                 # that modification must be saved.
                 sMix1(1, First two cells of Blocks[i], SBYTES/128, SBox[i], Flags without YESCRYPT_RW, null)
             else
-                SBox[i] = null
+                SBox[i] = NULL
             end if
 
             sMix1(R, Blocks[i], n, V[v..w], Flags, SBox[i])
@@ -260,24 +329,24 @@ Copyright
         end for
 
         for i = 0 to p - 1 do
-            sMix2(R, B[i], N, Nloop_all - Nloop_rw, V, flags without YESCRYPT_RW, SBox[i])
+            sMix2(R, Blocks[i], N, Nloop_all - Nloop_rw, V, flags without YESCRYPT_RW, SBox[i])
         end
 
 5.3. sMix1
 
     Input:
 
-        R
+        R               - An integer strictly greater than zero.
 
-        Block
+        Block           - A block.
 
-        N
+        N               - An integer strictly greater than zero.
 
-        OutputBlocks
+        OutputBlocks    - An array of N blocks.
 
-        Flags
+        Flags           - TODO
 
-        SBox
+        SBox            - Either NULL or an sbox.
 
     Output:
 
@@ -302,7 +371,7 @@ Copyright
                 Block = Block XOR OutputBlocks[j]
             end if
 
-            if SBox is null
+            if SBox is NULL
                 blockmix_salsa8(R, Block)
             else
                 blockmix_pwxform(R, Block, SBox)
@@ -317,19 +386,19 @@ Copyright
 
     Input:
 
-        R
+        R               - An integer strictly greater than zero.
 
-        Block
+        Block           - A block.
 
-        N
+        N               - An integer power of two strictly greater than 1.
 
-        Nloop
+        Nloop           - An integer greater than or equal to zero.
 
-        OutputBlocks
+        OutputBlocks    - An array of N blocks.
 
-        Flags
+        Flags           - TODO
 
-        Sbox
+        Sbox            - Either NULL or an sbox.
 
     Output:
 
@@ -356,7 +425,7 @@ Copyright
                 end if
             end if
 
-            if SBox is null
+            if SBox is NULL
                 blockmix_salsa8(R, Block)
             else
                 blockmix_pwxform(R, Block, SBox)
@@ -369,11 +438,11 @@ Copyright
 
     Input:
 
-        R
+        R           - An integer strictly greater than zero.
 
-        Block
+        Block       - A block.
 
-        Sbox
+        Sbox        - An sbox (may not be NULL)
 
     Output:
 
@@ -383,8 +452,7 @@ Copyright
 
     Steps:
 
-        # TODO: we need to specify that this is integer division
-        pwx_blocks = 2 * R * 16 / PWXWORDS
+        pwx_blocks = floor(2 * R * 16 / PWXWORDS)
 
         PWXB = View Block as PWXB[0], PWXB[1], ..., PWXB[pwx_blocks - 1] chunks
                of size PWXWORDS.
@@ -402,7 +470,6 @@ Copyright
         end for
 
         i = (pwx_blocks - 1) * PWXWORDS / 16
-        # NOTE: We're getting the i-th cell of Block here.
         salsa20_8(Block[i])
 
         for i = i + 1 to 2 * r - 1 do
@@ -416,13 +483,13 @@ Copyright
 
     Input:
 
-        Block
+        PWXBlock    - An array of PWXWORDS words.
 
-        Sbox
+        Sbox        - An sbox (may not be NULL).
 
     Output:
 
-        The Block parameter is modified in-place.
+        The PWXBlock parameter is modified in-place.
 
     Preconditions:
 
@@ -431,15 +498,27 @@ Copyright
         for i = 0 to PWXROUNDS - 1 do
             for j = 0 to PWXGATHER - 1 do
 
-                # TODO: We're mixing cell-indexing and word indexing here...
-                x_lo = Block[2 * j * PWXSIMPLE]
-                x_hi = Block[2 * j * PWXSIMPLE + 1]
+                x_lo = PWXBlock[2 * j * PWXSIMPLE]
+                x_hi = PWXBlock[2 * j * PWXSIMPLE + 1]
 
                 p0 = (xl & SMASK) / (PWXSIMPLE * 8)
                 p1 = (xh & SMASK) / (PWXSIMPLE * 8)
 
                 for k = 0 to PWXSIMPLE - 1 do
-                    # TODO: ...
+                    lo = PWXBlock[2 * (j * PWXSIMPLE + k)]
+                    hi = PWXBlock[2 * (j * PWXSIMPLE + k) + 1]
+
+                    - TODO: maybe we should define SBox as an array of 64-bit
+                      integers to simplify this..., but then we need to add
+                      a "cast" operation to our definition in the place where
+                      sboxes are created.
+
+                    s0 = Sbox[2 * (p0 * PWXSIMPLE + k)] + (SBox[2 * (p0 + PWXSIMPLE + k) + 1] * 2^32)
+                    s1 = Sbox[SWORDS/2 + 2 * (p1 * PWXSIMPLE + k)] + (Sbox[SWORDS/2 + 2 * (p1 * PWXSIMPLE + k) + 1] * 2^32)
+
+                    result = (((hi * lo) + s0) XOR s1) % 2^64
+                    PWXBlock[2 * (j * PWXSIMPLE + k)] = result & 2^32
+                    PWXBlock[2 * (j * PWXSIMPLE + k)] = floor(result / 2^32)
                 end
 
             end for
@@ -449,9 +528,9 @@ Copyright
 
     Input:
 
-        R
+        R           - An integer strictly greater than zero.
 
-        Block
+        Block       - A block.
 
     Output:
 
@@ -481,7 +560,7 @@ Copyright
 
     Input:
 
-        Words - An array of 16 words.
+        Cell - A cell.
 
     Output:
 
@@ -498,144 +577,193 @@ Copyright
 
     Input:
 
-        N
+        N           - An integer strictly greater than zero.
 
-        T
+        T           - An integer greater than or equal to zero.
 
-        Flags
+        Flags       - TODO
 
     Output:
 
-        Returns an integer.
+        Returns a positive integer.
 
     Preconditions:
 
     Steps:
 
+        The result is defined according to this table:
+
+        +------+-----------------+-----------------+
+        |      | Nloop           |                 |
+        | t    | YESCRYPT_RW     | YESCRYPT_WORM   |
+        +------+-----------------+-----------------+
+        | 0    | (N+2)/3         | N               |
+        | 1    | (2N + 2) / 3    | N + (N + 1) / 2 |
+        | > 1  | (t - 1)*N       | t*N             |
+        +------+-----------------+-----------------+
 
 5.10. p2floor
 
     Input:
 
-        X   - An integer.
+        X           - An integer strictly greater than 0.
 
     Output:
 
-        Returns an integer.
+        Returns the greatest power of two less than or equal to X.
 
     Preconditions:
 
     Steps:
 
+        y = X & (X - 1)
+        while y != 0
+            X = y
+            y = X & (X - 1)
+        end while
+        return X
 
 5.11. wrap
 
     Input:
 
-        X
+        X           - An integer greater than or equal to zero.
 
-        L
+        L           - An integer strictly greater than zero.
 
     Output:
 
-        Returns an integer.
+        Returns an integer in the range 0 to L-1 (inclusive).
 
     Preconditions:
 
     Steps:
+
+        n = p2floor(X)
+        return (X % n) + (L - n)
 
 5.12. integerify
 
     Input:
 
-        R
+        R           - An integer strictly greater than zero.
 
-        Block
+        Block       - A block.
 
     Output:
 
-        Returns an integer.
+        Returns an integer. A 64-bit value derived from Block.
 
     Preconditions:
 
     Steps:
+
+        return B[2*R - 1][0] + (B[2*R - 1][13] * 2^32)
 
 5.13. SIMDShuffle
 
     Input:
 
+        R           - An integer strictly greater than zero.
+
+        Block       - A block.
+
     Output:
+
+        Block is shuffled in place.
 
     Preconditions:
 
     Steps:
+
+        for i = 0 to 2*R - 1 do
+            Saved = Block[i]
+            for k = 0 to 15 do
+                Block[i][k] = Saved[(k * 5) % 16]
+            end
+        end for
 
 5.14. SIMDUnshufle
 
     Input:
 
+        R           - An integer strictly greater than zero.
+
+        Block       - A block.
+
     Output:
+
+        Block is unshuffled in place.
 
     Preconditions:
 
     Steps:
+
+        for i = 0 to 2*R - 1 do
+            Saved = Block[i]
+            for k = 0 to 15 do
+                Block[i][(k * 5) % 16] = Saved[k]
+            end
+        end for
 
 5.15. HMAC-SHA256
 
     Input:
 
-        Key
+        Key         - An arbitrary-length array of bytes.
 
-        Message
+        Message     - An arbitrary-length array of bytes.
+
+        - TODO: There are actual limitations coming from SHA256's input size
+          limit.... should we be more precise?
 
     Output:
 
-        A 32-byte result.
+        An array of 32 bytes.
 
     Preconditions:
 
     Steps:
 
-        - TODO: find the right HMAC reference
+        HMAC is defined in [4].
 
 5.16. PBKDF2-SHA256
 
     Input:
 
-        Password
+        Password        - An arbitrary-length array of bytes.
 
-        Salt
+        Salt            - An arbitrary-length array of bytes.
 
-        Iterations
+        Iterations      - An integer strictly greater than zero.
 
-        DKLen
+        DKLen           - An integer strictly greater than zero.
 
     Output:
 
-        A DKLen-byte result.
+        An array of DKLen bytes.
 
     Preconditions:
 
     Steps:
 
-        - TODO: find the right PBKDF2 reference
+        PBKDF2 is defined in [5].
 
 5.17. SHA256
 
     Input:
 
-        Message
+        Message         - An arbitrary-length array of bytes.
 
     Output:
 
-        A 32-byte result.
+        An array of 32 bytes.
 
     Preconditions:
 
-
     Steps:
 
-        - TODO: find the right SHA256 reference
+        SHA256 is defined in [6].
 
 6. Test Vectors
 
@@ -647,10 +775,13 @@ Copyright
     - TODO: Note that non-optimized implementations are essentially insecure, so
       the implementer needs to know their platform and might need to change
       their implementation from what we implicitly assume (e.g. 32-bit integers)
-      in order to be fast.
+      in order to be fast.... and all of that other stuff.
 
 8. References
 
     [1] https://password-hashing.net/submissions/specs/yescrypt-v1.pdf
     [2] https://password-hashing.net/submissions/yescrypt-v1.tar.gz
     [3] https://www.tarsnap.com/scrypt/scrypt.pdf
+    [4] https://tools.ietf.org/html/rfc2104
+    [5] https://tools.ietf.org/html/rfc2898
+    [6] http://csrc.nist.gov/publications/fips/fips180-4/fips-180-4.pdf
