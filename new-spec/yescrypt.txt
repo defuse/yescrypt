@@ -127,7 +127,8 @@ Copyright
 
     - TODO: What does "no longer secure" really mean? It means there are regions
       of allocated memory that never get read/written and so accesses are more
-      predictable... is it worth quanitfying that further?
+      predictable... is it worth quanitfying that further? I think that's too
+      much detail for this document... we'll just say "don't do it."
 
     - TODO: Can we help the programmer with the above? In theory we could make
       a table mapping the available integer types to the limits (all two's
@@ -559,7 +560,8 @@ Copyright
                     - TODO: maybe we should define SBox as an array of 64-bit
                       integers to simplify this..., but then we need to add
                       a "cast" operation to our definition in the place where
-                      sboxes are created.
+                      sboxes are created. Actually: We could just "cast" here,
+                      to contain all the complexity in this one function.
 
                     s0 = Sbox[2 * (p0 * PWXSIMPLE + k)] + (SBox[2 * (p0 + PWXSIMPLE + k) + 1] * 2^32)
                     s1 = Sbox[SWORDS/2 + 2 * (p1 * PWXSIMPLE + k)] + (Sbox[SWORDS/2 + 2 * (p1 * PWXSIMPLE + k) + 1] * 2^32)
@@ -618,8 +620,8 @@ Copyright
 
     Steps:
 
-        - TODO: Cite the reference for salsa20_8
-
+        This is the Salsa20 core reduced to 8 rounds. See [7] for more
+        information.
 
 5.9. fNloop
 
@@ -831,9 +833,13 @@ Copyright
 
 8. References
 
+    - TODO: These shouldn't just be links, they should include the title, etc.
+      in case some of the links rot.
+
     [1] https://password-hashing.net/submissions/specs/yescrypt-v1.pdf
     [2] https://password-hashing.net/submissions/yescrypt-v1.tar.gz
     [3] https://www.tarsnap.com/scrypt/scrypt.pdf
     [4] https://tools.ietf.org/html/rfc2104
     [5] https://tools.ietf.org/html/rfc2898
     [6] http://csrc.nist.gov/publications/fips/fips180-4/fips-180-4.pdf
+    [7] http://cr.yp.to/salsa20.html
