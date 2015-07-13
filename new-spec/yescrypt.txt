@@ -33,8 +33,6 @@ Copyright
     describe yescrypt in terms of functions and give pseudocode for their
     implementations.
 
-    - TODO: We probably need to say more here.
-
 2. Parameters
 
     The yescrypt algorithm accepts the following parameters:
@@ -61,18 +59,22 @@ Copyright
 
         DKLen       - The length of key to derive (output).
 
-
     Upon completion, yescrypt returns an array of DKLen bytes, which is a key
     derived from the Password and Salt according to the other parameters.
 
     - TODO: describe the limitations on the parameters here, and what G is.
 
+    - TODO: Explain what will overflow, etc when which parameters are too big.
+
 3. Constants
 
 3.1. Configurable Constants
 
+    - TODO: We can simplify the description a lot if we assume these are fixed
+      and unchanging (i.e. PWXWORDS == 16 which is a 'cell')
+
     PWXSIMPLE = 2
-    PWXGATHeR = 4
+    PWXGATHER = 4
     PWXROUNDS = 6
     SWIDTH    = 8
 
@@ -82,9 +84,9 @@ Copyright
 
     PWXBYTES = PWXGATHER * PWXSIMPLE * 8
     PWXWORDS = PWXBYTES / 4
-    SBYTES   = 2 * (1 << SWIDTH) * PWXSIMPLE * 8
+    SBYTES   = 2 * (2^SWIDTH) * PWXSIMPLE * 8
     SWORDS   = SBYTES / 4
-    SMASK    = ((1 << SWIDTH) - 1) * PWXSIMPLE * 8
+    SMASK    = ((2^SWIDTH) - 1) * PWXSIMPLE * 8
     RMIN     = (PWXBYTES + 127) / 128
 
 4. Data Types
@@ -98,12 +100,9 @@ Copyright
     A "block" is an array of 2*R cells, where R is a yescrypt parameter as
     defined above.
 
-    - TODO: We need to specify the type for integers holding counters, loop
-      limits, memory sizes, etc... scrypt needs 64-bit, but maybe for the sake
-      of specification we should just assume unbounded integers? No, I think it
-      is important, since sanity checks early on depend on the integer sizes
-      being used, to avoid overflow, and it's important for developers to know
-      that.
+    We assume integer parameters and loop counters are contained in 64-bit
+    unsigned integers. The necessary overflow checks have been omitted from the
+    psuedocode in this document.
 
 5. Functions
 
@@ -209,7 +208,7 @@ Copyright
 
         P
 
-        Block
+        Blocks
 
         Flags
 
@@ -220,6 +219,49 @@ Copyright
     Preconditions:
 
     Steps:
+
+        Allocate P sboxes SBox[0], SBox[1], ..., SBox[P - 1].
+
+        n = N / P
+
+        Nloop_all = fNloop(n, T, Flags)
+
+        if YESCRYPT_RW flag is set
+            NLoop_rw = Nloop_all / P
+        else
+            NLoop_rw = 0
+        end
+
+        n = n - (n % 2)
+
+        Nloop_all = Nloop_all + (Nloop_all % 2)
+        Nloop_rw = Nloop_rw - (Nloop_rw % 2)
+
+        Allocate N blocks V[0], V[1], ..., V[N-1]
+
+        for i = 0 to p - 1 do
+            v = i * n
+            if i == p - 1 do
+                n = n - v
+            end if
+            w = v - n - 1
+
+            if YESCRYPT_RW flag is set
+                # Note: This call modifies the first two cells of Blocks[i], and
+                # that modification must be saved.
+                sMix1(1, First two cells of Blocks[i], SBYTES/128, SBox[i], Flags without YESCRYPT_RW, null)
+            else
+                SBox[i] = null
+            end if
+
+            sMix1(R, Blocks[i], n, V[v..w], Flags, SBox[i])
+
+            sMix2(R, Blocks[i], p2floor(n), Nloop_rw, V[v..w], Flags, SBox[i])
+        end for
+
+        for i = 0 to p - 1 do
+            sMix2(R, B[i], N, Nloop_all - Nloop_rw, V, flags without YESCRYPT_RW, SBox[i])
+        end
 
 5.3. sMix1
 
@@ -235,7 +277,7 @@ Copyright
 
         Flags
 
-        Sbox
+        SBox
 
     Output:
 
@@ -244,6 +286,31 @@ Copyright
     Preconditions:
 
     Steps:
+
+        SIMDShuffle(Block)
+
+        for i = 0 to N - 1 do
+
+            OutputBlocks[i] = Block
+
+            # TODO: look at the spec to get the right condition here
+            # TODO: pass the ROM down as an explicit parameter
+            if false
+                # TODO: the ROM thing
+            else if YESCRYPT_RW flag is set AND i > 1
+                j = wrap(integerify(r, input_block), i)
+                Block = Block XOR OutputBlocks[j]
+            end if
+
+            if SBox is null
+                blockmix_salsa8(R, Block)
+            else
+                blockmix_pwxform(R, Block, SBox)
+            end if
+
+        end for
+
+        SIMDUnshuffle(Block)
 
 
 5.4. sMix2
@@ -272,6 +339,31 @@ Copyright
 
     Steps:
 
+        SIMDShuffle(Block)
+
+        for i = 0 to NLoop - 1 do
+
+            # TODO: same as above
+            if false
+                # TODO: ROM stuff
+            else
+                j = integerify(R, Block) % N
+
+                Block = Block XOR OutputBlocks[j]
+
+                if YESCRYPT_RW flag is set
+                    OutputBlocks[j] = Block
+                end if
+            end if
+
+            if SBox is null
+                blockmix_salsa8(R, Block)
+            else
+                blockmix_pwxform(R, Block, SBox)
+            end if
+        end for
+
+        SIMDUnshufle(Block)
 
 5.5. blockmix_pwxform
 
@@ -291,6 +383,34 @@ Copyright
 
     Steps:
 
+        # TODO: we need to specify that this is integer division
+        pwx_blocks = 2 * R * 16 / PWXWORDS
+
+        PWXB = View Block as PWXB[0], PWXB[1], ..., PWXB[pwx_blocks - 1] chunks
+               of size PWXWORDS.
+
+        X = PWXB[pwx_blocks - 1]
+
+        for i = 0 to pwx_blocks - 1 do
+            if pwx_blocks > 1
+                X = X XOR PWXB[i]
+            end
+
+            pwxform(X)
+
+            PWXB[i] = X
+        end for
+
+        i = (pwx_blocks - 1) * PWXWORDS / 16
+        # NOTE: We're getting the i-th cell of Block here.
+        salsa20_8(Block[i])
+
+        for i = i + 1 to 2 * r - 1 do
+            # TODO: Check this... I think this is right, and actually simpler.
+            # (If it is, we don't need that extra array in the Ruby impl.)
+            Block[i] = Block[i - 1] XOR Block[i]
+            salsa20_8(Block[i])
+        end for
 
 5.6. pwxform
 
@@ -308,6 +428,22 @@ Copyright
 
     Steps:
 
+        for i = 0 to PWXROUNDS - 1 do
+            for j = 0 to PWXGATHER - 1 do
+
+                # TODO: We're mixing cell-indexing and word indexing here...
+                x_lo = Block[2 * j * PWXSIMPLE]
+                x_hi = Block[2 * j * PWXSIMPLE + 1]
+
+                p0 = (xl & SMASK) / (PWXSIMPLE * 8)
+                p1 = (xh & SMASK) / (PWXSIMPLE * 8)
+
+                for k = 0 to PWXSIMPLE - 1 do
+                    # TODO: ...
+                end
+
+            end for
+        end for
 
 5.7. blockmix_salsa8
 
@@ -325,6 +461,21 @@ Copyright
 
     Steps:
 
+        X = Block[2 * r - 1]
+
+        Allocate a block Y.
+
+        for i = 0 to 2 * r - 1 do
+            X = X XOR Block[i]
+            salsa20_8(X)
+            if i % 2 == 0
+                Y[i/2] = X
+            else
+                Y[r + (i-1)/2] = X
+            end
+        end for
+
+        Block = Y
 
 5.8. sala20_8
 
@@ -339,6 +490,8 @@ Copyright
     Preconditions:
 
     Steps:
+
+        - TODO: Cite the reference for salsa20_8
 
 
 5.9. fNloop
@@ -407,7 +560,27 @@ Copyright
 
     Steps:
 
-5.13. HMAC-SHA256
+5.13. SIMDShuffle
+
+    Input:
+
+    Output:
+
+    Preconditions:
+
+    Steps:
+
+5.14. SIMDUnshufle
+
+    Input:
+
+    Output:
+
+    Preconditions:
+
+    Steps:
+
+5.15. HMAC-SHA256
 
     Input:
 
@@ -425,7 +598,7 @@ Copyright
 
         - TODO: find the right HMAC reference
 
-5.14. PBKDF2-SHA256
+5.16. PBKDF2-SHA256
 
     Input:
 
@@ -447,7 +620,7 @@ Copyright
 
         - TODO: find the right PBKDF2 reference
 
-5.15. SHA256
+5.17. SHA256
 
     Input:
 
