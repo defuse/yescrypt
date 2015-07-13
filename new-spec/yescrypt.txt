@@ -148,6 +148,12 @@ Copyright
     integers. For the remainder of this document, we refer to 32-bit unsigned
     integers as "words."
 
+    - TODO: More accurately, the words don't *need* to be stored in little
+      endian order except when we treat a block or array of blocks as a byte
+      array, which AFAIK only happens at the outer 'yescrypt()' level (PBKDF2,
+      HMAC, etc.)... so we could leave the host byte order undefined, and then
+      add explicit conversions to the pseudocode.
+
     Yescrypt operates on groups of words at a time, so it is useful to define
     terminology for the sizes of these groups. A "cell" will refer to an array
     of 16 words. A "block" will refer to an array of 2*R cells, where R is
