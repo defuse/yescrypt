@@ -777,6 +777,9 @@ Copyright
       their implementation from what we implicitly assume (e.g. 32-bit integers)
       in order to be fast.... and all of that other stuff.
 
+    - TODO: Here's a good place to mention the implementations issues I had
+      (overflow to floating point and the related side channels).
+
 8. References
 
     [1] https://password-hashing.net/submissions/specs/yescrypt-v1.pdf
