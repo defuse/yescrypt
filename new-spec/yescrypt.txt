@@ -25,6 +25,8 @@ Copyright
     permission is granted, redistributed modified works do not contain
     misleading author, version, name of work, or endorsement information.
 
+    - TODO: Note: I stole the above paragraph from the scrypt internet draft.
+
 1. Introduction
 
     Yescrypt [1] is a password-based key derivation function. It applies slow
@@ -67,7 +69,7 @@ Copyright
 
         Flags       - Flags enabling/disabling yescrypt features.
 
-        [Rom]       - Read-only memory that the resulting key will be made to
+        [ROM]       - Read-only memory that the resulting key will be made to
                       depend on.
 
         DKLen       - The length of key to derive (output).
@@ -92,28 +94,58 @@ Copyright
 
         G           - An integer greater than or equal to zero.
 
-        Flags       - Either 0, YESCRYPT_RW, or YESCRYPT_WORM.
+        Flags       - Valid flags are: YESCRYPT_RW, YESCRYPT_WORM, and
+                      YESCRYPT_PREHASH. Each flag can either be set or not set.
 
-        [Rom]       - Read-only memory supporting fast random access.
+        [ROM]       - An array of NROM blocks (a block is defined below), where
+                      NROM is a power of two strictly greater than 1. Read-only
+                      memory supporting fast random access. Optional. Maybe
+                      NULL.
 
-    In concrete implementations, there will be further restrictions to these
-    values, as values computed from them may overflow the system's native
-    integer types. It is up to the programmer to determine these limitations and
-    check for them.
+    The YESCRYPT_RW and YESCRYPT_WORM flags may not be set at the same time.
+    T may only be non-zero when either the YESCRYPT_RW flag or the YESCRYPT_WORM
+    flag is set. When the YESCRYPT_RW flag is set, floor(N/p) must be strictly
+    greater than 1.
 
-    - TODO: If we have time: It would be really nice to write out all those
-      limitations here, for e.g. 32-bit signed/unsigned and 64-bit
-      signed/unsigned integers, so that they know what to check to ensure
-      overflow doesn't happen.
+    - TODO: It's ugly how NROM is not a formal parameter... Maybe we should just
+      say it's a certain power-of-two number of blocks, and then make some
+      syntax for getting the number of blocks down in where ROM is actually
+      used?
 
-    - TODO: There is actually a hard limit from the algorithm on some of these,
-      because integerify() only gets 64 bits.
+    When no flags are set, T = 0, G = 0, and no ROM is given, yescrypt is
+    equivalent to classic scrypt.
 
-    - TODO: I think I'm missing some other constraints... see the cases that the
-      tests have to skip. Are those really required or just what the reference
-      algorithm chose not to implement?
+    In actual implementations of yescrypt, there will be further restrictions to
+    these parameters. Values computed from them may overflow the integer type
+    used to store the result. It is up to the programmer to determine these
+    limitations and check for them, as they are platform-dependant.
 
-    - TODO: We're forgetting YESCRYPT_PREHASH in the 'Flags' thing above.
+    The integerify() function is specified to return a 64-bit value. This value
+    is then "wrapped" according to a value computed from these parameters. If
+    the wrap limit is more than 2^64, then yescrypt is no longer secure. It is
+    left to the programmer to check for this case.
+
+    - TODO: What does "no longer secure" really mean? It means there are regions
+      of allocated memory that never get read/written and so accesses are more
+      predictable... is it worth quanitfying that further?
+
+    - TODO: Can we help the programmer with the above? In theory we could make
+      a table mapping the available integer types to the limits (all two's
+      compliment):
+
+            32-bit signed:
+
+            32-bit unsigned:
+
+            64-bit signed:
+
+            64-bit unsigned:
+
+
+            ...or would it be quicker/better/more accurate to look through
+            yescrypt and just find the "largest" values computed (or all values
+            computed) and then just list them... so that they can just check if
+            those values would overflow.
 
 3. Constants
 
@@ -144,15 +176,8 @@ Copyright
 
 4. Data Types
 
-    Yescrypt operates on arrays of little-endian encoded 32-bit unsigned
-    integers. For the remainder of this document, we refer to 32-bit unsigned
-    integers as "words."
-
-    - TODO: More accurately, the words don't *need* to be stored in little
-      endian order except when we treat a block or array of blocks as a byte
-      array, which AFAIK only happens at the outer 'yescrypt()' level (PBKDF2,
-      HMAC, etc.)... so we could leave the host byte order undefined, and then
-      add explicit conversions to the pseudocode.
+    Yescrypt operates on arrays of 32-bit unsigned integers. For the remainder
+    of this document, we refer to 32-bit unsigned integers as "words."
 
     Yescrypt operates on groups of words at a time, so it is useful to define
     terminology for the sizes of these groups. A "cell" will refer to an array
@@ -166,7 +191,8 @@ Copyright
 
     Additionally, an "sbox" refers to an array of SWORDS words.
 
-    - TODO: describe the "views" thing with PWXWORDS?
+    Whenever a block or cell needs to be interpreted as a byte array, the words
+    should be encoded in little-endian byte order.
 
     Whenever necessary, we assume integer parameters and loop counters are
     contained in 64-bit unsigned integers. Overflow checks have been omitted
@@ -202,7 +228,7 @@ Copyright
 
         Flags
 
-        [Rom]
+        [ROM]
 
         DKLen
 
@@ -249,10 +275,10 @@ Copyright
         end if
 
         if YESCRYPT_RW flag is set then
-            sMix(N, R, T, P, B, Flags)
+            sMix(N, R, T, P, B, Flags, ROM)
         else
             for i = 0 to P - 1 do
-                sMix(N, R, T, 1, B[i], Flags)
+                sMix(N, R, T, 1, B[i], Flags, ROM)
             end
         end if
 
@@ -285,7 +311,11 @@ Copyright
 
         Blocks  - An array of P blocks.
 
-        Flags   - TODO
+        Flags   - Valid flags are: YESCRYPT_RW, YESCRYPT_WORM, and
+                  YESCRYPT_PREHASH. Each flag can either be set or not set.
+
+        [ROM]   - An array of NROM blocks, where NROM is a power of two. May be
+                  NULL.
 
     Output:
 
@@ -324,18 +354,18 @@ Copyright
             if YESCRYPT_RW flag is set
                 # Note: This call modifies the first two cells of Blocks[i], and
                 # that modification must be saved.
-                sMix1(1, First two cells of Blocks[i], SBYTES/128, SBox[i], Flags without YESCRYPT_RW, null)
+                sMix1(1, First two cells of Blocks[i], SBYTES/128, SBox[i], Flags without YESCRYPT_RW, NULL, ROM)
             else
                 SBox[i] = NULL
             end if
 
-            sMix1(R, Blocks[i], n, V[v..w], Flags, SBox[i])
+            sMix1(R, Blocks[i], n, V[v..w], Flags, SBox[i], ROM)
 
-            sMix2(R, Blocks[i], p2floor(n), Nloop_rw, V[v..w], Flags, SBox[i])
+            sMix2(R, Blocks[i], p2floor(n), Nloop_rw, V[v..w], Flags, SBox[i], ROM)
         end for
 
         for i = 0 to p - 1 do
-            sMix2(R, Blocks[i], N, Nloop_all - Nloop_rw, V, flags without YESCRYPT_RW, SBox[i])
+            sMix2(R, Blocks[i], N, Nloop_all - Nloop_rw, V, flags without YESCRYPT_RW, SBox[i], ROM)
         end
 
 5.3. sMix1
@@ -350,9 +380,14 @@ Copyright
 
         OutputBlocks    - An array of N blocks.
 
-        Flags           - TODO
+        Flags           - Valid flags are: YESCRYPT_RW, YESCRYPT_WORM, and
+                          YESCRYPT_PREHASH. Each flag can either be set or not
+                          set.
 
-        SBox            - Either NULL or an sbox.
+        [SBox]          - Either NULL or an sbox.
+
+        [ROM]           - An array of NROM blocks, where NROM is a power of two.
+                          May be NULL.
 
     Output:
 
@@ -368,12 +403,11 @@ Copyright
 
             OutputBlocks[i] = Block
 
-            # TODO: look at the spec to get the right condition here
-            # TODO: pass the ROM down as an explicit parameter
-            if false
-                # TODO: the ROM thing
+            if (ROM is not NULL) AND (i % 2 != 0)
+                j = integerify(R, Block) % NROM
+                Block = Block XOR ROM[j]
             else if YESCRYPT_RW flag is set AND i > 1
-                j = wrap(integerify(r, input_block), i)
+                j = wrap(integerify(R, Block), i)
                 Block = Block XOR OutputBlocks[j]
             end if
 
@@ -402,9 +436,14 @@ Copyright
 
         OutputBlocks    - An array of N blocks.
 
-        Flags           - TODO
+        Flags           - Valid flags are: YESCRYPT_RW, YESCRYPT_WORM, and
+                          YESCRYPT_PREHASH. Each flag can either be set or not
+                          set.
 
-        Sbox            - Either NULL or an sbox.
+        [Sbox]          - Either NULL or an sbox.
+
+        [ROM]           - An array of NROM blocks, where NROM is a power of two.
+                          May be NULL.
 
     Output:
 
@@ -418,9 +457,9 @@ Copyright
 
         for i = 0 to NLoop - 1 do
 
-            # TODO: same as above
-            if false
-                # TODO: ROM stuff
+            if (ROM is not NULL) AND (i % 2 != 0)
+                j = integerify(R, Block) % NROM
+                Block = Block XOR ROM[j]
             else
                 j = integerify(R, Block) % N
 
@@ -460,6 +499,7 @@ Copyright
 
         pwx_blocks = floor(2 * R * 16 / PWXWORDS)
 
+        # Pretend "cells" are now made up of PWXWORDs words, instead of 16.
         PWXB = View Block as PWXB[0], PWXB[1], ..., PWXB[pwx_blocks - 1] chunks
                of size PWXWORDS.
 
@@ -474,6 +514,8 @@ Copyright
 
             PWXB[i] = X
         end for
+
+        # Go back to thinking of cells as 16 words.
 
         i = (pwx_blocks - 1) * PWXWORDS / 16
         salsa20_8(Block[i])
@@ -587,7 +629,8 @@ Copyright
 
         T           - An integer greater than or equal to zero.
 
-        Flags       - TODO
+        Flags       - Valid flags are: YESCRYPT_RW, YESCRYPT_WORM, and
+                      YESCRYPT_PREHASH. Each flag can either be set or not set.
 
     Output:
 
