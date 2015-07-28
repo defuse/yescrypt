@@ -273,7 +273,7 @@ Copyright
 
         B[0], B[1], ..., B[P-1] = PBKDF2-SHA256(Password, Salt, 1, P * 128 * R)
 
-        if YESCRYPT_RW flag is set OR YESCRYPT_WORM flag is set then
+        if any of the YESCRYPT_RW, YESCRYPT_WORM, or YESCRYPT_PREHASH flags are set
             Password = The first 32 bytes of B[0]
         end if
 
@@ -322,7 +322,7 @@ Copyright
 
     Output:
 
-        The Block parameter is modified in-place.
+        The Blocks parameter is modified in-place.
 
     Preconditions:
 
@@ -350,9 +350,9 @@ Copyright
         for i = 0 to p - 1 do
             v = i * n
             if i == p - 1 do
-                n = n - v
+                n = N - v
             end if
-            w = v - n - 1
+            w = v + n - 1
 
             if YESCRYPT_RW flag is set
                 # Note: This call modifies the first two cells of Blocks[i], and
@@ -552,8 +552,8 @@ Copyright
                 x_lo = PWXBlock[2 * j * PWXSIMPLE]
                 x_hi = PWXBlock[2 * j * PWXSIMPLE + 1]
 
-                p0 = (xl & SMASK) / (PWXSIMPLE * 8)
-                p1 = (xh & SMASK) / (PWXSIMPLE * 8)
+                p0 = (x_lo & SMASK) / (PWXSIMPLE * 8)
+                p1 = (x_hi & SMASK) / (PWXSIMPLE * 8)
 
                 for k = 0 to PWXSIMPLE - 1 do
                     lo = PWXBlock[2 * (j * PWXSIMPLE + k)]
@@ -622,8 +622,11 @@ Copyright
 
     Steps:
 
-        This is the Salsa20 core reduced to 8 rounds. See [7] for more
-        information.
+        This is the Salsa20 core reduced to 8 rounds with a SIMD unshuffle (like
+        SIMDUnshuffle) pre-applied and a SIMD shuffle (like SIMDShuffle)
+        post-applied. See [7] for more information.
+
+        TODO: specify the shuffling completely here.
 
 5.9. fNloop
 
@@ -646,14 +649,14 @@ Copyright
 
         The result is defined according to this table:
 
-        +------+-----------------+-----------------+
-        |      | Nloop           |                 |
-        | t    | YESCRYPT_RW     | YESCRYPT_WORM   |
-        +------+-----------------+-----------------+
-        | 0    | (N+2)/3         | N               |
-        | 1    | (2N + 2) / 3    | N + (N + 1) / 2 |
-        | > 1  | (t - 1)*N       | t*N             |
-        +------+-----------------+-----------------+
+        +------+-----------------+-----------------+-----------+
+        |      | Nloop           |                 |           |
+        | t    | YESCRYPT_RW     | YESCRYPT_WORM   | Otherwise |
+        +------+-----------------+-----------------+-----------+
+        | 0    | (N+2)/3         | N               | N         |
+        | 1    | (2N + 2) / 3    | N + (N + 1) / 2 | N         |
+        | > 1  | (t - 1)*N       | t*N             | N         |
+        +------+-----------------+-----------------+-----------+
 
 5.10. p2floor
 
