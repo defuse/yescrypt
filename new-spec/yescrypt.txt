@@ -244,6 +244,8 @@ Copyright
 
     Steps:
 
+        # TODO: This is missing the G > 0 stuff.
+
         if
             YESCRYPT_RW flag is set AND
             P >= 1 AND
