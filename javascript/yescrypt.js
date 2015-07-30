@@ -118,7 +118,7 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
         this.sMix(N, r, t, p, B, flags);
     } else {
         for (var i = 0; i < p; i++) {
-            var Bi = new Uint32Array(B.buffer, i * 128 * r, 128 * r / 4);
+            var Bi = new Uint32Array(B.buffer, B.byteOffset + i * 2 * r * 16 * 4, 2 * r * 16);
             this.sMix(N, r, t, 1, Bi, flags);
         }
     }
@@ -126,10 +126,10 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
     var result = this.pbkdf2_sha256(password, bytes, 1, Math.max(dkLen, 32));
 
     if ( (flags & (this.YESCRYPT_RW | this.YESCRYPT_WORM)) !== 0 && (flags & this.YESCRYPT_PREHASH) === 0) {
-        var clientValue = new Uint8Array(result.buffer, 0, 32);
+        var clientValue = new Uint8Array(result.buffer, result.byteOffset + 0, 32);
         var clientKey = this.hmac_sha256(
-            this.convertStringToUint8Array("Client Key"),
-            clientValue
+            clientValue,
+            this.convertStringToUint8Array("Client Key")
         );
         var storedKey = this.sha256(clientKey);
 
@@ -139,7 +139,7 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
     }
 
     // XXX we shouldn't be keeping around all that memory (gc attacks)
-    return new Uint8Array(result.buffer, 0, dkLen);
+    return new Uint8Array(result.buffer, result.byteOffset + 0, dkLen);
 };
 
 yescrypt.sMix = function (N, r, t, p, blocks, flags) {
@@ -174,22 +174,21 @@ yescrypt.sMix = function (N, r, t, p, blocks, flags) {
         }
 
         if ( (flags & this.YESCRYPT_RW) !== 0 ) {
-            var twocells = new Uint32Array(blocks.buffer, 0, 2 * 16);
+            var twocells = new Uint32Array(blocks.buffer, blocks.byteOffset + i * 2 * r * 16 * 4, 2 * 16);
             this.sMix1(1, twocells, this.SBYTES/128, sboxes[i], flags & ~this.YESCRYPT_RW, null);
         } else {
             sboxes[i] = null;
         }
 
-        var BlockI = new Uint32Array(blocks.buffer, i * 2 * r * 16, 2 * r * 16);
-        var VPart = new Uint32Array(V.buffer, v * 2 * r * 16, n * 2 * r * 16);
-        // DEBUG: the inputs are the same here
+        var BlockI = new Uint32Array(blocks.buffer, blocks.byteOffset + i * 2 * r * 16 * 4, 2 * r * 16);
+        var VPart = new Uint32Array(V.buffer, V.byteOffset + v * 2 * r * 16 * 4, n * 2 * r * 16);
         this.sMix1(r, BlockI, n, VPart, flags, sboxes[i]);
 
         this.sMix2(r, BlockI, this.p2floor(n), Nloop_rw, VPart, flags, sboxes[i]);
     }
 
     for (var i = 0; i < p; i++) {
-        var BlockI = new Uint32Array(blocks.buffer, i * 2 * r * 16, 2 * r * 16);
+        var BlockI = new Uint32Array(blocks.buffer, blocks.byteOffset + i * 2 * r * 16 * 4, 2 * r * 16);
         this.sMix2(r, BlockI, N, Nloop_all - Nloop_rw, V, flags & ~this.YESCRYPT_RW, sboxes[i]);
     }
 };
@@ -207,7 +206,7 @@ yescrypt.sMix1 = function (r, block, N, outputblocks, flags, sbox) {
         if (false && i % 2 !== 0) {
             // TODO: ROM support.
         } else if ( (flags & this.YESCRYPT_RW) !== 0 && i > 1 ) {
-            var j = this.wrap(this.integerify(r, block));
+            var j = this.wrap(this.integerify(r, block), i);
             // Block = Block XOR OutputBlocks[j]
             for (var k = 0; k < 2 * r * 16; k++) {
                 block[k] ^= outputblocks[j * 2 * r * 16 + k];
@@ -282,38 +281,37 @@ yescrypt.blockmix_pwxform = function (r, block, sbox) {
         }
     }
 
-    var i = (pwx_blocks - 1) * this.PWXWORDS / 16;
-    this.salsa20_8(new Uint32Array(block.buffer, i * 16 * 4, 16));
+    // TODO: just make sure PWXWORDS is divisible by 16
+    var i = Math.floor((pwx_blocks - 1) * this.PWXWORDS / 16);
+    this.salsa20_8(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16));
 
     // TODO: check this stuff
     for (i = i + 1; i < 2 * r; i++) {
-        for (var j = 0; j < 16; i++) {
+        for (var j = 0; j < 16; j++) {
             block[i * 16 + j] ^= block[ (i - 1) * 16 + j ];
         }
-        this.salsa20_8(new Uint32Array(block.buffer, i * 16 * 4, 16));
+        this.salsa20_8(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16));
     }
 };
 
 yescrypt.pwxform = function (pwxblock, sbox) {
     this.assert(pwxblock.length === this.PWXWORDS);
+    this.assert(sbox.length === this.SWORDS);
 
     for (var i = 0; i < this.PWXROUNDS; i++) {
-        for (j = 0; j < this.PWXGATHER; j++) {
+        for (var j = 0; j < this.PWXGATHER; j++) {
             var x_lo = pwxblock[2 * j * this.PWXSIMPLE];
             var x_hi = pwxblock[2 * j * this.PWXSIMPLE + 1];
 
             var p0 = (x_lo & this.SMASK) / (this.PWXSIMPLE * 8);
             var p1 = (x_hi & this.SMASK) / (this.PWXSIMPLE * 8);
 
-            // FIXME: This matches PHP on all the manual cases I tried... but
-            // there is something that's making the actual tests fail.
-
             for (var k = 0; k < this.PWXSIMPLE; k++) {
                 var lo = pwxblock[2 * (j * this.PWXSIMPLE + k)];
                 var hi = pwxblock[2 * (j * this.PWXSIMPLE + k) + 1];
 
                 var s0_lo = sbox[2 * (p0 * this.PWXSIMPLE + k)];
-                var s0_hi = sbox[2 * (p0 + this.PWXSIMPLE + k) + 1];
+                var s0_hi = sbox[2 * (p0 * this.PWXSIMPLE + k) + 1];
 
                 var s1_lo = sbox[this.SWORDS / 2 + 2 * (p1 * this.PWXSIMPLE + k)];
                 var s1_hi = sbox[this.SWORDS / 2 + 2 * (p1 * this.PWXSIMPLE + k) + 1];
@@ -455,7 +453,7 @@ yescrypt.integerify = function (r, block) {
 
 yescrypt.fNloop = function (n, t, flags) {
     if ( (flags & this.YESCRYPT_RW) !== 0 ) {
-        if (t == 0) {
+        if (t === 0) {
             return Math.floor( (n + 2)/3 );
         } else if (t == 1) {
             return Math.floor( (2 * n + 2) / 3 );
@@ -463,7 +461,7 @@ yescrypt.fNloop = function (n, t, flags) {
             return (t - 1) * n;
         }
     } else if ( (flags & this.YESCRYPT_WORM) !== 0 ) {
-        if (t == 0) {
+        if (t === 0) {
             return n;
         } else if (t == 1) {
             return n + Math.floor( (n + 1) / 2 );

@@ -313,7 +313,7 @@ module Yescrypt
 
     0.upto(n - 1) do |i|
       # V_i <- X
-      0.upto(2 * r * 16) do |j|
+      0.upto(2 * r * 16 - 1) do |j|
         out_seq_write_memory[2 * r * 16 * i + j] = input_block[j]
       end
 
