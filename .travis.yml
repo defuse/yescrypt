@@ -4,6 +4,9 @@ language: php
 php:
     - 5.5
 
+install:
+    - npm install sjcl
+
 script:
     - ./test-php.sh
     - ./test-ruby.sh
