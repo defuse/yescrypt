@@ -88,7 +88,7 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
     }
 
     if ( (flags & this.YESCRYPT_RW) !== 0 && p >= 1 && Math.floor(N/p) >= 0x100 && Math.floor(N/p) * r >= 0x20000 ) {
-        password = this.calculate(password, salt, n >> 6, r, p, 0, 0, flags | this.YESCRYPT_PREHASH, 32);
+        password = this.calculate(password, salt, N >> 6, r, p, 0, 0, flags | this.YESCRYPT_PREHASH, 32);
     }
 
     if (flags != 0) {
