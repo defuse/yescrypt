@@ -3,13 +3,11 @@
  * It replaces the implementations salsa20_8 and pwxform with SIMD versions.
  */
 
-// TODO: we should check if SIMD is available and automatically replace if so.
 
 
 
 
-
-yescrypt.salsa20_8 = function (cell) {
+yescrypt.salsa20_8_simd = function (cell) {
     var X0 = SIMD.Int32x4.load(cell, 0);
     var X1 = SIMD.Int32x4.load(cell, 4);
     var X2 = SIMD.Int32x4.load(cell, 8);
@@ -299,9 +297,7 @@ yescrypt.salsa20_8 = function (cell) {
     SIMD.Int32x4.store(cell, 12, OrigX3);
 }
 
-// TODO: Check the PWXFORM constants.
-
-yescrypt.pwxform = function (pwxblock, sbox) {
+yescrypt.pwxform_simd = function (pwxblock, sbox) {
     var zero = SIMD.Int32x4(0, 0, 0, 0);
     var ones = SIMD.Int32x4(1, 1, 1, 1);
     var low_ones = SIMD.Int32x4(1, 0, 1, 0);
@@ -373,4 +369,11 @@ yescrypt.pwxform = function (pwxblock, sbox) {
             SIMD.Int32x4.store(pwxblock, 2 * j * this.PWXSIMPLE, Bj);
         }
     }
+}
+
+// XXX: Check if yescrypt.SWIDTH is tunable with our implementation? I think it is.
+if (typeof SIMD !== 'undefined' && yescrypt.PWXSIMPLE == 2 && yescrypt.PWXGATHER == 4 && yescrypt.SWIDTH == 8) {
+    yescrypt.salsa20_8 = yescrypt.salsa20_8_simd;
+    yescrypt.pwxform = yescrypt.pwxform_simd;
+    yescrypt.using_simd = true;
 }

@@ -19,6 +19,8 @@ yescrypt.YESCRYPT_RW = 1;
 yescrypt.YESCRYPT_WORM = 2;
 yescrypt.YESCRYPT_PREHASH = 0x100000;
 
+yescrypt.using_simd = false;
+
 /*
  * password:    a Uint8Array.
  * salt:        a Uint8Array.
