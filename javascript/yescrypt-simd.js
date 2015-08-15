@@ -303,115 +303,118 @@ yescrypt.salsa20_8 = function (cell) {
 
 // TODO: Check the PWXFORM constants.
 
-yescrypt.pwxform = function (pwxblock, sbox) {
+yescrypt.pwxform2 = function (pwxblock, sbox) {
     this.assert(this.PWXSIMPLE == 2)
 
     var zero = SIMD.Int32x4(0, 0, 0, 0);
+    var ones = SIMD.Int32x4(1, 1, 1, 1);
     var low_ones = SIMD.Int32x4(1, 0, 1, 0);
     // Assumed by The ADD---Int64x2 macro. XXX: figure out how to say the macro's name correctly.
     var acc;
 
     for (var i = 0; i < this.PWXROUNDS; i++) {
-        for (var j = 0; j < this.PWXGATHER; j++) {
-            var x_lo = pwxblock[2 * j * this.PWXSIMPLE];
-            var x_hi = pwxblock[2 * j * this.PWXSIMPLE + 1];
+        // We do TWO j indexes at a time, because we can fit FOUR 32-bit ints
+        // into a SIMD vector.
+        for (var j = 0; j < this.PWXGATHER; j += 2) {
 
-            var p0 = (x_lo & this.SMASK) / (this.PWXSIMPLE * 8);
-            var p1 = (x_hi & this.SMASK) / (this.PWXSIMPLE * 8);
+            var start = 2 * j * this.PWXSIMPLE;
+            var p = SIMD.Int32x4(
+                pwxblock[2 * j * this.PWXSIMPLE],
+                pwxblock[2 * j * this.PWXSIMPLE + 1],
+                pwxblock[2 * (j+1) * this.PWXSIMPLE],
+                pwxblock[2 * (j+1) * this.PWXSIMPLE]
+            );
+            p = SIMD.Int32x4.and(p, SIMD.Int32x4.splat(this.SMASK));
+            // Divide by PWXSIMPLE * 8 == 2 * 8 == 16 == 2^4
+            p = SIMD.Int32x4.shiftRightLogicalByScalar(p, 4);
 
-            var Bj = SIMD.Int32x4.load(pwxblock, 2 * j * this.PWXSIMPLE);
-            var S0p0 = SIMD.Int32x4.load(sbox, 2 * p0 * this.PWXSIMPLE);
-            var S1p1 = SIMD.Int32x4.load(sbox, this.SWORDS / 2 + 2 * p1 * this.PWXSIMPLE);
+            var first = SIMD.Int32x4.load(pwxblock, start);
+            var second = SIMD.Int32x4.load(pwxblock, start + 4);
+            var B_lows = SIMD.Int32x4.shuffle(first, second, 0, 2, 4, 6);
+            var B_highs = SIMD.Int32x4.shuffle(first, second, 1, 3, 5, 7);
+
+            // The shiftRightLogicalByScalar above guarantees the following
+            // extractLane() calls return positive numbers.
+            var j0S0p0 = SIMD.Int32x4.load(sbox, 2 * (SIMD.Int32x4.extractLane(p, 0) * this.PWXSIMPLE));
+            var j1S0p0 = SIMD.Int32x4.load(sbox, 2 * (SIMD.Int32x4.extractLane(p, 2) * this.PWXSIMPLE));
+            var j0S1p1 = SIMD.Int32x4.load(sbox, this.SWORDS / 2 + 2 * (SIMD.Int32x4.extractLane(p, 1) * this.PWXSIMPLE));
+            var j1S1p1 = SIMD.Int32x4.load(sbox, this.SWOARDS / 2 + 2 * (SIMD.Int32x4.extractLane(p, 3) * this.PWXSIMPLE));
 
             // MULTIPLY.
-            var parts = SIMD.Int16x8.fromInt32x4Bits(Bj);
-            var A = SIMD.Int16x8.swizzle(parts, 0, 0, 1, 0, 2, 0, 3, 0);
-            A = SIMD.Int16x8.and(
-                    A,
-                    SIMD.Int16x8(0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0)
+            var Ah = SIMD.Int32x4.shiftRightLogicalByScalar(B_highs, 16);
+            var Al = SIMD.Int32x4.shiftLeftByScalar(B_highs, 16);
+            var Bh = SIMD.Int32x4.shiftRightLogicalByScalar(B_lows, 16);
+            var Bl = SIMD.Int32x4.shiftLeftByScalar(B_lows, 16);
+
+            var AhBh = SIMD.Int32x4.mul(Ah, Bh);
+            var AhBl = SIMD.Int32x4.mul(Ah, Bl);
+            var AlBh = SIMD.Int32x4.mul(Al, Bh);
+            var AlBl = SIMD.Int32x4.mul(Al, Bl);
+
+            // Ph = AhBh + (AhBl + AlBh) >> 16.
+            var sum = SIMD.Int32x4.add(AhBl, AlBh);
+            // Compute the carries.
+            var carries = SIMD.Int32x4.or(
+                SIMD.Int32x4.and(
+                    // We added a positive number...
+                    SIMD.Int32x4.greaterThan(AlBh, zero),
+                    // ... and the result decreased.
+                    SIMD.Int32x4.lessThan(sum, AhBl)
+                ),
+                // OR,
+                SIMD.Int32x4.and(
+                    // We added a negative number...
+                    SIMD.Int32x4.lessThan(AlBh, zero),
+                    // ...and the result increased.
+                    SIMD.Int32x4.greaterThan(sum, AhBl)
+                )
             );
-            A = SIMD.Int32x4.fromInt16x8Bits(A);
-            var B = SIMD.Int16x8.swizzle(parts, 4, 0, 5, 0, 6, 0, 7, 0);
-            B = SIMD.Int16x8.and(
-                    B,
-                    SIMD.Int16x8(0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0, 0xFFFF, 0)
+            carries = SIMD.Int32x4.select(carries, ones, zero);
+            carries = SIMD.Int32x4.shiftLeftByScalar(carries, 16);
+            sum = SIMD.Int32x4.shiftRightLogicalByScalar(sum, 16);
+            sum = SIMD.Int32x4.add(sum, carries);
+            var Ph = SIMD.Int32x4.add(AhBh, sum);
+
+            // Pl = (AhBl + AlBh) << 16 + AlBl
+            var Pl = SIMD.Int32x4.shiftLeftByScalar(
+                // XXX We've already computed this sum above.
+                SIMD.Int32x4.add(AhBl, AlBh),
+                16
             );
-            B = SIMD.Int32x4.fromInt16x8Bits(B);
-
-            Aprod = SIMD.Int32x4.mul(
-                A,
-                SIMD.Int32x4.swizzle(A, 2, 3, 1, 0)
+            PlNew = SIMD.Int32x4.add(Pl, AlBl);
+            // Compute the carries.
+            var carries = SIMD.Int32x4.or(
+                SIMD.Int32x4.and(
+                    // We added a positive number...
+                    SIMD.Int32x4.greaterThan(AlBl, zero),
+                    // ... and the result decreased.
+                    SIMD.Int32x4.lessThan(PlNew, Pl)
+                ),
+                // OR,
+                SIMD.Int32x4.and(
+                    // We added a negative number...
+                    SIMD.Int32x4.lessThan(AlBl, zero),
+                    // ...and the result increased.
+                    SIMD.Int32x4.greaterThan(PlNew, Pl)
+                )
             );
-            Bprod = SIMD.Int32x4.mul(
-                B,
-                SIMD.Int32x4.swizzle(B, 2, 3, 1, 0)
-            );
-
-            // XXX: forgetting the 'var' on everything
-            RawTerms = SIMD.Int32x4.shuffle(Aprod, Bprod, 0, 1, 4, 5);
-            MidTerms = SIMD.Int32x4.shuffle(Aprod, Bprod, 2, 3, 6, 7);
-            MidTermsL = SIMD.Int32x4.shiftLeftByScalar(MidTerms, 16);
-            MidTermsR = SIMD.Int32x4.shiftRightLogicalByScalar(MidTerms, 16);
-
-            ToAddOne = SIMD.Int32x4.shuffle(MidTermsL, MidTermsR, 0, 4, 2, 6);
-            ToAddTwo = SIMD.Int32x4.shuffle(MidTermsL, MidTermsR, 1, 5, 3, 7);
-
-            acc = SIMD.Int32x4.add(RawTerms, ToAddOne);
-    carries = SIMD.Int32x4.or(
-        SIMD.Int32x4.and(
-            SIMD.Int32x4.greaterThan(ToAddOne, zero),
-            SIMD.Int32x4.lessThan(acc, RawTerms)
-        ),
-        SIMD.Int32x4.and(
-            SIMD.Int32x4.lessThan(ToAddOne, zero),
-            SIMD.Int32x4.greaterThan(acc, RawTerms)
-        )
-    );
-    carries = SIMD.Int32x4.select(
-        carries,
-        low_ones,
-        zero
-    );
-    carries = SIMD.Int32x4.swizzle(carries, 1, 0, 3, 2);
-    RawTerms = SIMD.Int32x4.add(
-        acc,
-        carries
-    );
-
-            acc = SIMD.Int32x4.add(RawTerms, ToAddTwo);
-    carries = SIMD.Int32x4.or(
-        SIMD.Int32x4.and(
-            SIMD.Int32x4.greaterThan(ToAddTwo, zero),
-            SIMD.Int32x4.lessThan(acc, RawTerms)
-        ),
-        SIMD.Int32x4.and(
-            SIMD.Int32x4.lessThan(ToAddTwo, zero),
-            SIMD.Int32x4.greaterThan(acc, RawTerms)
-        )
-    );
-    carries = SIMD.Int32x4.select(
-        carries,
-        low_ones,
-        zero
-    );
-    carries = SIMD.Int32x4.swizzle(carries, 1, 0, 3, 2);
-    RawTerms = SIMD.Int32x4.add(
-        acc,
-        carries
-    );
-
-            Bj = RawTerms;
+            carries = SIMD.Int32x4.select(carries, ones, zero);
+            Ph = SIMD.Int32x4.add(Ph, carries);
+            Pl = PlNew;
 
             // ADD.
-            acc = SIMD.Int32x4.add(Bj, S0p0);
+            var Bj0 = SIMD.Int32x4.shuffle(Pl, Ph, 0, 4, 1, 5);
+            var Bj1 = SIMD.Int32x4.shuffle(Pl, Ph, 2, 6, 3, 7);
+
+            acc = SIMD.Int32x4.add(Bj0, j0S0p0);
     carries = SIMD.Int32x4.or(
         SIMD.Int32x4.and(
-            SIMD.Int32x4.greaterThan(S0p0, zero),
-            SIMD.Int32x4.lessThan(acc, Bj)
+            SIMD.Int32x4.greaterThan(j0S0p0, zero),
+            SIMD.Int32x4.lessThan(acc, Bj0)
         ),
         SIMD.Int32x4.and(
-            SIMD.Int32x4.lessThan(S0p0, zero),
-            SIMD.Int32x4.greaterThan(acc, Bj)
+            SIMD.Int32x4.lessThan(j0S0p0, zero),
+            SIMD.Int32x4.greaterThan(acc, Bj0)
         )
     );
     carries = SIMD.Int32x4.select(
@@ -420,17 +423,40 @@ yescrypt.pwxform = function (pwxblock, sbox) {
         zero
     );
     carries = SIMD.Int32x4.swizzle(carries, 1, 0, 3, 2);
-    Bj = SIMD.Int32x4.add(
+    Bj0 = SIMD.Int32x4.add(
+        acc,
+        carries
+    );
+
+            acc = SIMD.Int32x4.add(Bj1, j1S0p0);
+    carries = SIMD.Int32x4.or(
+        SIMD.Int32x4.and(
+            SIMD.Int32x4.greaterThan(j1S0p0, zero),
+            SIMD.Int32x4.lessThan(acc, Bj1)
+        ),
+        SIMD.Int32x4.and(
+            SIMD.Int32x4.lessThan(j1S0p0, zero),
+            SIMD.Int32x4.greaterThan(acc, Bj1)
+        )
+    );
+    carries = SIMD.Int32x4.select(
+        carries,
+        low_ones,
+        zero
+    );
+    carries = SIMD.Int32x4.swizzle(carries, 1, 0, 3, 2);
+    Bj1 = SIMD.Int32x4.add(
         acc,
         carries
     );
 
 
             // XOR.
-            Bj = SIMD.Int32x4.xor(Bj, S1p1);
+            Bj0 = SIMD.Int32x4.xor(Bj0, j0S1p1);
+            Bj1 = SIMD.Int32x4.xor(Bj1, j1S1p1);
 
-            // Store Bj back.
-            SIMD.Int32x4.store(pwxblock, 2 * j * this.PWXSIMPLE, Bj);
+            SIMD.Int32x4.store(pwxblock, start, Bj0);
+            SIMD.Int32x4.store(pwxblock, start + 4, Bj1);
         }
     }
 }
