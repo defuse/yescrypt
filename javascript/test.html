@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Yescrypt Test Page</title>
+        <script src="sjcl.js"></script>
+        <script src="yescrypt.js"></script>
+        <script src="yescrypt-simd.js"></script>
+    </head>
+    <body>
+        <input type="button" value="Click me" onclick="clicked()" />
+        <script>
+            function clicked() {
+                var result = yescrypt.calculate(strToUint8("password"), strToUint8("NaCl"), 1024, 8, 16, 0, 0, 1, 64);
+                var w = yescrypt.using_simd ? "with SIMD" : "WITHOUT SIMD";
+                alert(convertUint8ArrayToHex(result) + " " + w);
+            }
+
+            function convertUint8ArrayToHex(uint8Array) {
+                var hex = '';
+                for (var i = 0; i < uint8Array.length; i++) {
+                    hex += (uint8Array[i] >> 4).toString(16);
+                    hex += (uint8Array[i] & 0x0F).toString(16);
+                }
+                return hex;
+            }
+
+            function strToUint8(str) {
+                // XXX: this is not correct for unicode strings.
+                var bytes = new Uint8Array(str.length);
+                for (var i = 0; i < str.length; i++) {
+                    bytes[i] = str.charCodeAt(i);
+                }
+                return bytes;
+            }
+        </script>
+    </body>
+</html>
