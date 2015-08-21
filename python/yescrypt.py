@@ -38,10 +38,7 @@ def calculate(password, salt, N, r, p, t, g, flags, dkLen):
             key += "-prehash"
         password = hmac_sha256(key, password)
 
-    # XXX: need the hashing stuff to all return byte arrays
-
     bbytes = pbkdf2_sha256(password, salt, 1, p * 128 * r)
-
     B = array('L', unpack('I' * (len(bbytes)//4), bbytes))
 
     if flags != 0:
@@ -53,10 +50,11 @@ def calculate(password, salt, N, r, p, t, g, flags, dkLen):
         sMix(N, r, t, p, B, flags)
     else:
         for i in xrange(0, p):
-            Bi = B[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 2 * r * 16]
+            Bi = B[i * 2 * r * 16: i * 2 * r * 16 + 2 * r * 16]
             sMix(N, r, t, 1, Bi, flags)
-            B[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 2 * r * 16] = Bi
+            B[i * 2 * r * 16 : i * 2 * r * 16 + 2 * r * 16] = Bi
 
+    bbytes = ''.join(pack('I', b) for b in B)
     result = pbkdf2_sha256(password, bbytes, 1, max(dkLen, 32))
 
     if (flags & (YESCRYPT_RW | YESCRYPT_WORM)) != 0 and (flags & YESCRYPT_PREHASH) == 0:
@@ -95,29 +93,27 @@ def sMix(N, r, t, p, blocks, flags):
             n = N - v
 
         if (flags & YESCRYPT_RW) != 0:
-            twocells = blocks[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 32]
+            twocells = blocks[i * 2 * r * 16 : i * 2 * r * 16 + 32]
             sMix1(1, twocells, SBYTES//128, sboxes[i], flags & ~YESCRYPT_RW, None)
-            blocks[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 32] = twocells
+            blocks[i * 2 * r * 16: i * 2 * r * 16 + 32] = twocells
         else:
             sboxes[i] = None
 
-        BlockI = blocks[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 2 * r * 16]
-        VPart = V[v * 2 * r * 16 * 4 : v * 2 * r * 16 * 4 + n * 2 * r * 16]
+        BlockI = blocks[i * 2 * r * 16 : i * 2 * r * 16 + 2 * r * 16]
+        VPart = V[v * 2 * r * 16 : v * 2 * r * 16 + n * 2 * r * 16]
         sMix1(r, BlockI, n, VPart, flags, sboxes[i])
         sMix2(r, BlockI, p2floor(n), Nloop_rw, VPart, flags, sboxes[i])
-        blocks[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 2 * r * 16] = BlockI
-        V[v * 2 * r * 16 * 4 : v * 2 * r * 16 * 4 + n * 2 * r * 16] = VPart
+        blocks[i * 2 * r * 16 : i * 2 * r * 16 + 2 * r * 16] = BlockI
+        V[v * 2 * r * 16 : v * 2 * r * 16 + n * 2 * r * 16] = VPart
 
     for i in xrange(0, p):
-        BlockI = blocks[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 2 * r * 16]
+        BlockI = blocks[i * 2 * r * 16 : i * 2 * r * 16 + 2 * r * 16]
         sMix2(r, BlockI, N, Nloop_all - Nloop_rw, V, flags & ~YESCRYPT_RW, sboxes[i])
-        blocks[i * 2 * r * 16 * 4 : i * 2 * r * 16 * 4 + 2 * r * 16] = BlockI
+        blocks[i * 2 * r * 16 : i * 2 * r * 16 + 2 * r * 16] = BlockI
 
 def sMix1(r, block, N, outputblocks, flags, sbox):
 
-    simd_shuffle_block(r, block)
-
-    print(len(outputblocks))
+    simd_shuffle_block(2*r, block)
 
     for i in xrange(0, N):
         for j in xrange(0, 2 * r * 16):
@@ -126,10 +122,9 @@ def sMix1(r, block, N, outputblocks, flags, sbox):
         # XXX: ROM support left out
         if False:
             pass
-        else:
+        elif (flags & YESCRYPT_RW) != 0 and i > 1:
             j = wrap(integerify(r, block), i)
             for k in xrange(0, 2 * r * 16):
-                print(j * 2 * r * 16 + k)
                 block[k] ^= outputblocks[j * 2 * r * 16 + k]
 
         if sbox is None:
@@ -137,11 +132,11 @@ def sMix1(r, block, N, outputblocks, flags, sbox):
         else:
             blockmix_pwxform(r, block, sbox)
 
-    simd_unshuffle_block(r, block)
+    simd_unshuffle_block(2*r, block)
 
 def sMix2(r, block, N, Nloop, outputblocks, flags, sbox):
 
-    simd_shuffle_block(r, block)
+    simd_shuffle_block(2*r, block)
 
     for i in xrange(0, Nloop):
         # XXX: ROM support left out
@@ -162,7 +157,7 @@ def sMix2(r, block, N, Nloop, outputblocks, flags, sbox):
         else:
             blockmix_pwxform(r, block, sbox)
 
-    simd_unshuffle_block(r, block)
+    simd_unshuffle_block(2*r, block)
 
 def blockmix_pwxform(r, block, sbox):
 
@@ -185,7 +180,7 @@ def blockmix_pwxform(r, block, sbox):
 
     # XXX: make a new array type with fast slicing
     i = (pwx_blocks - 1) * PWXWORDS // 16
-    bi = b[i * 16 : (i * 16) + 16]
+    bi = block[i * 16 : (i * 16) + 16]
     salsa20_8(bi)
     for j in xrange(0, 16):
         block[i * 16 + j] = bi[j]
@@ -355,7 +350,7 @@ def salsa20_8(B):
 # implementations. The other implementations should be made to match this one.
 def simd_shuffle_block(twiceR, block):
     # XXX: there's a better way to do this
-    saved = array('L', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+    saved = array('L', [0] * 16)
     for i in xrange(0, twiceR):
         for j in xrange(0, 16):
             saved[j] = block[i * 16 + (j * 5) % 16]
@@ -364,7 +359,7 @@ def simd_shuffle_block(twiceR, block):
 
 def simd_unshuffle_block(twiceR, block):
     # XXX: there's a better way to do this
-    saved = array('L', [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+    saved = array('L', [0] * 16)
     for i in xrange(0, twiceR):
         for j in xrange(0, 16):
             saved[j] = block[i * 16 + j]
@@ -394,7 +389,7 @@ def fNloop(n, t, flags):
 
 def p2floor(x):
     y = x & (x - 1)
-    while x != 0:
+    while y != 0:
         x = y
         y = x & (x - 1)
     return x
@@ -406,12 +401,20 @@ def wrap(x, i):
 # XXX: return type of these?
 def sha256(message):
     m = hashlib.sha256()
-    m.update(message)
+    m.update(str(message))
     return bytearray(m.digest())
 
 def hmac_sha256(key, message):
-    return bytearray(hmac.new(key, msg=message, digestmod=hashlib.sha256).digest())
+    return bytearray(hmac.new(str(key), msg=str(message), digestmod=hashlib.sha256).digest())
+
+# XXX hack
+# https://stackoverflow.com/questions/3172536/issues-with-python-hashlib-sha256-2-4-3
+class mysha256:
+    digest_size = 32
+    def new(self, inp=''):
+        return hashlib.sha256(inp)
 
 def pbkdf2_sha256(password, salt, count, length):
-    return bytearray(PBKDF2(str(password), str(salt), count).read(length))
+    # XXX the str() thing doesn't work in python3
+    return bytearray(PBKDF2(str(password), str(salt), count, mysha256()).read(length))
 
