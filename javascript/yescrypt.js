@@ -10,7 +10,7 @@ yescrypt.SWIDTH = 8;
 
 yescrypt.PWXBYTES = yescrypt.PWXGATHER * yescrypt.PWXSIMPLE * 8;
 yescrypt.PWXWORDS = yescrypt.PWXBYTES / 4;
-yescrypt.SBYTES = 2 * (1 << yescrypt.SWIDTH) * yescrypt.PWXSIMPLE * 8;
+yescrypt.SBYTES = 3 * (1 << yescrypt.SWIDTH) * yescrypt.PWXSIMPLE * 8;
 yescrypt.SWORDS = yescrypt.SBYTES / 4;
 yescrypt.SMASK = ((1 << yescrypt.SWIDTH) - 1) * yescrypt.PWXSIMPLE * 8;
 yescrypt.RMIN = (yescrypt.PWXBYTES + 127) / 128;
@@ -117,7 +117,7 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
     }
 
     if ( (flags & this.YESCRYPT_RW) !== 0 ) {
-        this.sMix(N, r, t, p, B, flags);
+        this.sMix(N, r, t, p, B, flags, password);
     } else {
         for (var i = 0; i < p; i++) {
             var Bi = new Uint32Array(B.buffer, B.byteOffset + i * 2 * r * 16 * 4, 2 * r * 16);
@@ -144,13 +144,20 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
     return new Uint8Array(result.buffer, result.byteOffset + 0, dkLen);
 };
 
-yescrypt.sMix = function (N, r, t, p, blocks, flags) {
+yescrypt.sMix = function (N, r, t, p, blocks, flags, sha256) {
     // blocks should be p blocks (each 2*r cells).
     this.assert(blocks.length == p * 2 * r * 16);
 
     var sboxes = [];
     for (var i = 0; i < p; i++) {
-        sboxes.push(new Uint32Array(this.SWORDS));
+        sbox = {
+            S: new Uint32Array(this.SWORDS),
+            S2: 0,
+            S1: this.SWORDS / 3,
+            S0: (this.SWORDS / 3) * 2,
+            w: 0
+        }
+        sboxes.push(sbox);
     }
 
     var n = Math.floor(N / p);
@@ -164,6 +171,7 @@ yescrypt.sMix = function (N, r, t, p, blocks, flags) {
     n = n - (n & 1);
 
     Nloop_all = Nloop_all + (Nloop_all & 1);
+    Nloop_rw += 1;
     Nloop_rw = Nloop_rw - (Nloop_rw & 1);
 
     // Allocate N blocks.
@@ -177,7 +185,16 @@ yescrypt.sMix = function (N, r, t, p, blocks, flags) {
 
         if ( (flags & this.YESCRYPT_RW) !== 0 ) {
             var twocells = new Uint32Array(blocks.buffer, blocks.byteOffset + i * 2 * r * 16 * 4, 2 * 16);
-            this.sMix1(1, twocells, this.SBYTES/128, sboxes[i], flags & ~this.YESCRYPT_RW, null);
+            this.sMix1(1, twocells, this.SBYTES/128, sboxes[i].S, flags & ~this.YESCRYPT_RW, null);
+            if (i == 0) {
+                var for_sha256_update = new Uint8Array(
+                    blocks.buffer,
+                    blocks.byteOffset + (i * 2 * r * 16 + 2 * r * 16 - 16) * 4,
+                    64
+                );
+                var sha256_updated = this.hmac_sha256(for_sha256_update, sha256);
+                sha256.set(sha256_updated);
+            }
         } else {
             sboxes[i] = null;
         }
@@ -285,20 +302,24 @@ yescrypt.blockmix_pwxform = function (r, block, sbox) {
 
     // TODO: just make sure PWXWORDS is divisible by 16
     var i = Math.floor((pwx_blocks - 1) * this.PWXWORDS / 16);
-    this.salsa20_8(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16));
+    this.salsa20(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16), 2);
 
     // TODO: check this stuff
     for (i = i + 1; i < 2 * r; i++) {
         for (var j = 0; j < 16; j++) {
             block[i * 16 + j] ^= block[ (i - 1) * 16 + j ];
         }
-        this.salsa20_8(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16));
+        this.salsa20(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16), 2);
     }
 };
 
 yescrypt.pwxform = function (pwxblock, sbox) {
     this.assert(pwxblock.length === this.PWXWORDS);
-    this.assert(sbox.length === this.SWORDS);
+    this.assert(sbox.S.length === this.SWORDS);
+
+    var S0 = sbox.S0;
+    var S1 = sbox.S1;
+    var S2 = sbox.S2;
 
     for (var i = 0; i < this.PWXROUNDS; i++) {
         for (var j = 0; j < this.PWXGATHER; j++) {
@@ -312,11 +333,11 @@ yescrypt.pwxform = function (pwxblock, sbox) {
                 var lo = pwxblock[2 * (j * this.PWXSIMPLE + k)];
                 var hi = pwxblock[2 * (j * this.PWXSIMPLE + k) + 1];
 
-                var s0_lo = sbox[2 * (p0 * this.PWXSIMPLE + k)];
-                var s0_hi = sbox[2 * (p0 * this.PWXSIMPLE + k) + 1];
+                var s0_lo = sbox.S[S0 + 2 * (p0 * this.PWXSIMPLE + k)];
+                var s0_hi = sbox.S[S0 + 2 * (p0 * this.PWXSIMPLE + k) + 1];
 
-                var s1_lo = sbox[this.SWORDS / 2 + 2 * (p1 * this.PWXSIMPLE + k)];
-                var s1_hi = sbox[this.SWORDS / 2 + 2 * (p1 * this.PWXSIMPLE + k) + 1];
+                var s1_lo = sbox.S[S1 + 2 * (p1 * this.PWXSIMPLE + k)];
+                var s1_hi = sbox.S[S1 + 2 * (p1 * this.PWXSIMPLE + k) + 1];
 
                 var mul_lo = 0;
                 var mul_hi = 0;
@@ -349,9 +370,20 @@ yescrypt.pwxform = function (pwxblock, sbox) {
 
                 pwxblock[2 * (j * this.PWXSIMPLE + k)] = mul_lo;
                 pwxblock[2 * (j * this.PWXSIMPLE + k) + 1] = mul_hi;
+
+                if (i != 0 && i != this.PWXROUNDS - 1) {
+                    sbox.S[S2 + 2 * sbox.w] = mul_lo;
+                    sbox.S[S2 + 2 * sbox.w + 1] = mul_hi;
+                    sbox.w += 1;
+                }
             }
         }
     }
+
+    sbox.S0 = S2;
+    sbox.S1 = S0;
+    sbox.S2 = S1;
+    sbox.w = sbox.w & (this.SMASK / 8);
 };
 
 yescrypt.blockmix_salsa8 = function (r, block) {
@@ -368,7 +400,7 @@ yescrypt.blockmix_salsa8 = function (r, block) {
         for (var j = 0; j < 16; j++) {
             X[j] ^= block[i * 16 + j];
         }
-        this.salsa20_8(X);
+        this.salsa20(X, 8);
         if (i % 2 === 0) {
             for (var j = 0; j < 16; j++) {
                 Y[i/2 * 16 + j] = X[j];
@@ -385,7 +417,7 @@ yescrypt.blockmix_salsa8 = function (r, block) {
     }
 };
 
-yescrypt.salsa20_8 = function (cell) {
+yescrypt.salsa20 = function (cell, rounds) {
     // XXX: 0.5 hack... fix this when the spec is updated.
     this.simd_unshuffle_block(0.5, cell);
 
@@ -397,7 +429,7 @@ yescrypt.salsa20_8 = function (cell) {
     // This was partially copypasted from
     // https://raw.githubusercontent.com/neoatlantis/node-salsa20/master/salsa20.js
     function R(a, b){return (((a) << (b)) | ((a) >>> (32 - (b))));};
-    for (var i = 8; i > 0; i -= 2){
+    for (var i = rounds; i > 0; i -= 2){
         x[ 4] ^= R(x[ 0]+x[12], 7);  x[ 8] ^= R(x[ 4]+x[ 0], 9);
         x[12] ^= R(x[ 8]+x[ 4],13);  x[ 0] ^= R(x[12]+x[ 8],18);
         x[ 9] ^= R(x[ 5]+x[ 1], 7);  x[13] ^= R(x[ 9]+x[ 5], 9);

@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Build the testing tool.
-cd reference/yescrypt-0.7.1/yescrypt/yescrypt-0.7.1/
+cd reference/yescrypt-0.8/
 make ref
 
-./tester "node ../../../../javascript/yescrypt-cli.js"
+./tester "node ../../javascript/yescrypt-cli.js"
 
 if [ $? -ne 0 ]; then
     echo "FAIL."

@@ -6,6 +6,9 @@ yescrypt
 This repository holds my implementations of the yescrypt algorithm done for
 Google Summer of Code 2015.
 
+**NOTE:** Currently, all implementations are of yescrypt 0.7.1, except for the
+javascript one, which is of yescrypt 0.8.0.
+
 Documentation
 ---------------
 

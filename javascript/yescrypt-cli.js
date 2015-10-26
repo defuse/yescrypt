@@ -45,9 +45,18 @@ switch (argv[0]) {
         var pwxblock32 = new Uint32Array(pwxblock.buffer);
 
         var sbox = hexToUint8Array(argv[2]);
+        // TODO: deduplicate this, so that we're testing the code yescrypt.js
+        // actually uses to create the object.
         var sbox32 = new Uint32Array(sbox.buffer);
+        sbox_obj = {
+            S: sbox32,
+            S2: 0,
+            S1: sbox32.length / 3,
+            S0: (sbox32.length / 3) * 2,
+            w: 0
+        }
 
-        yescrypt.pwxform(pwxblock32, sbox32);
+        yescrypt.pwxform(pwxblock32, sbox_obj);
 
         process.stdout.write(
             toNodeBuffer(pwxblock)
@@ -57,7 +66,7 @@ switch (argv[0]) {
     case 'salsa20_8':
         var cell = hexToUint8Array(argv[1]);
         var cell32 = new Uint32Array(cell.buffer);
-        yescrypt.salsa20_8(cell32);
+        yescrypt.salsa20(cell32, 8);
         process.stdout.write(
             toNodeBuffer(cell)
         );
