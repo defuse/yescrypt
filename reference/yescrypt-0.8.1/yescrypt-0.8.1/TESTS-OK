@@ -1,0 +1,90 @@
+scrypt("", "", 16, 1, 1) = 77 d6 57 62 38 65 7b 20 3b 19 ca 42 c1 8a 04 97 f1 6b 48 44 e3 07 4a e8 df df fa 3f ed e2 14 42 fc d0 06 9d ed 09 48 f8 32 6a 75 3a 0f c8 1f 17 e8 d3 e0 fb 2e 0d 36 28 cf 35 e2 0c 38 d1 89 06
+scrypt("password", "NaCl", 1024, 8, 16) = fd ba be 1c 9d 34 72 00 78 56 e7 19 0d 01 e9 fe 7c 6a d7 cb c8 23 78 30 e7 73 76 63 4b 37 31 62 2e af 30 d9 2e 22 a3 88 6f f1 09 27 9d 98 30 da c7 27 af b9 4a 83 ee 6d 83 60 cb df a2 cc 06 40
+scrypt("pleaseletmein", "SodiumChloride", 16384, 8, 1) = 70 23 bd cb 3a fd 73 48 46 1c 06 cd 81 fd 38 eb fd a8 fb ba 90 4f 8e 3e a9 b5 43 f6 54 5d a1 f2 d5 43 29 55 61 3f 0f cf 62 d4 97 05 24 2a 9a f9 e6 1e 85 dc 0d 65 1e 40 df cf 01 7b 45 57 58 87
+scrypt("pleaseletmein", "SodiumChloride", 1048576, 8, 1) = 21 01 cb 9b 6a 51 1a ae ad db be 09 cf 70 f8 81 ec 56 8d 57 4a 2f fd 4d ab e5 ee 98 20 ad aa 47 8e 56 fd 8f 4b a5 d0 9f fa 1c 6d 92 7c 40 f4 c3 37 30 40 49 e8 a9 52 fb cb f4 5c 6f a7 7a 41 a4
+yescrypt("", "", 16, 1, 1, 0, 0, 0) = 77 d6 57 62 38 65 7b 20 3b 19 ca 42 c1 8a 04 97 f1 6b 48 44 e3 07 4a e8 df df fa 3f ed e2 14 42 fc d0 06 9d ed 09 48 f8 32 6a 75 3a 0f c8 1f 17 e8 d3 e0 fb 2e 0d 36 28 cf 35 e2 0c 38 d1 89 06
+yescrypt("", "", 16, 1, 1, 0, 0, 0) = 77 d6 57 62 38 65 7b 20
+yescrypt("", "", 4, 1, 1, 0, 0, 0) = ef ad 0c 23 31 4c b5 72 bc 3c fb 15 43 da 42 f8 a8 b0 73 00 4c 86 6b 64 ab 50 55 a4 f0 9f a5 f5 71 14 2e bf e7 e0 5a 3b 92 c4 32 f3 1d ea 95 ad 5f 9c 85 4b 64 56 46 2f 4b d0 f7 32 b7 cd c5 49
+yescrypt("", "", 4, 1, 1, 0, 0, 2) = 85 dd a4 8c 9e c9 de 2f 7f 1a e8 b4 df ed a5 1f 8b 6d 56 f3 08 1b e1 a7 c0 83 3b a2 71 9a 36 ab 02 88 5d ae 36 55 7d 34 26 86 b1 7b a7 5f 2c 21 77 92 de 09 70 ab 1d 07 a9 c7 50 93 6d 31 42 6f
+yescrypt("", "", 4, 1, 1, 0, 0, 2) = 85 dd a4 8c 9e c9 de 2f
+yescrypt("", "", 4, 1, 1, 1, 0, 2) = 4b aa 8c d8 60 8b a9 1f 3e 34 39 d9 ec 4f ae 8f 9f c0 92 d9 ca 22 b7 37 7e 31 ae 5b 9a d7 87 7c 11 68 69 11 62 dd 0e 5e f0 49 e5 70 65 0c be d4 38 4a d6 05 34 fb 0c be d1 9f f3 f0 33 c9 4b 0c
+yescrypt("", "", 4, 1, 1, 2, 0, 2) = e6 e8 bb a0 9b 64 12 ff b0 b3 cc 35 e3 7d 0b 78 2a 47 fb aa dc 57 a0 76 d7 c6 cc 2e 70 91 9a 1b 8d 47 38 c4 f8 33 55 69 07 42 d9 be d7 1c 3b 8f b0 d7 eb 08 6a b1 34 c5 e5 57 07 c2 c1 3c 75 ef
+yescrypt("", "", 4, 1, 1, 3, 0, 2) = ac d9 a4 20 1c f4 a4 76 ec f7 ba a6 11 3d 86 fb 65 cd 07 10 2b 40 04 e4 f9 d9 9c d3 42 55 a1 08 99 7d 70 ae 0a 64 bf 0a 4d 96 c1 73 ab f8 82 79 c1 a9 4a d9 bd f1 68 ed fb bd 90 f6 6e d5 c8 0d
+yescrypt("", "", 4, 1, 1, 3, 0, 2) = ac d9 a4 20 1c f4 a4 76 ec f7 ba a6 11 3d 86 fb 65 cd 07 10 2b 40 04 e4 f9 d9 9c d3 42 55 a1 08 99
+yescrypt("", "", 4, 1, 1, 3, 0, 2) = ac d9 a4 20 1c f4 a4 76 ec f7 ba a6 11 3d 86 fb 65 cd 07 10 2b 40 04 e4 f9 d9 9c d3 42 55 a1 08
+yescrypt("", "", 4, 1, 1, 3, 0, 2) = ac d9 a4 20 1c f4 a4 76 ec f7 ba a6 11 3d 86 fb 65 cd 07 10 2b 40 04 e4 f9 d9 9c d3 42 55 a1
+yescrypt("", "", 4, 1, 1, 3, 0, 2) = ac
+yescrypt("", "", 4, 1, 1, 0, 0, 1) = 0c d5 af 76 eb 24 1d f8 11 9a 9a 12 2a e3 69 20 bc c7 f4 14 b9 c0 d5 8f 45 00 80 60 da de 46 b0 c8 09 22 bd cc 16 a3 ab 5d 20 1d 4c 61 40 c6 71 be 1f 75 27 2c a9 04 73 9d 5a d1 ff 67 2b 0c 21
+yescrypt("", "", 4, 1, 1, 0, 0, 1) = 0c d5 af 76
+yescrypt("", "", 4, 1, 1, 1, 0, 1) = 23 b6 ad f0 b6 0c 9a 99 7f 58 58 3d 80 cd a4 8c 63 8c dc 2f 28 9e df 93 a7 08 07 72 5a 0d 35 c4 68 ca 36 2c 55 57 cc 04 b6 81 1e 2e 73 08 41 f5 26 d8 f4 f7 ac fb fa 9e 06 fe 1f 38 3a 71 15 5e
+yescrypt("", "", 4, 1, 1, 1, 0, 1) = 23 b6 ad f0 b6 0c 9a 99 7f 58 58 3d 80 cd a4 8c 63 8c dc 2f 28 9e df 93 a7 08 07 72 5a 0d 35 c4 68
+yescrypt("", "", 4, 1, 1, 1, 0, 1) = 23 b6 ad f0 b6 0c 9a 99 7f 58 58 3d 80 cd a4 8c 63 8c dc 2f 28 9e df 93 a7 08 07 72 5a 0d 35 c4
+yescrypt("", "", 4, 1, 1, 1, 0, 1) = 23 b6 ad f0 b6 0c 9a 99 7f 58 58 3d 80 cd a4 8c 63 8c dc 2f 28 9e df 93 a7 08 07 72 5a 0d 35
+yescrypt("", "", 4, 1, 1, 1, 0, 1) = 23
+yescrypt("p", "s", 16, 8, 1, 10, 0, 1) = e1 f9 81 73 3a 94 05 2f cd 7a cb 14 05 df 0b bd e8 e4 99 b6 a1 33 1b 77 59 09 b4 8c 2f 51 6c 40 dc c8 30 16 35 b7 23 7b
+yescrypt("p", "s", 16, 8, 1, 11, 1, 1) = 98 55 12 24 09 25 e6 4e 93 ae d0 ae cd 48 66 2e 7c 51 af 70 ee de 7f c9 fb b3 63 21 96 3d 07 7c 26 6c 8b 66 27 d9 6a 28
+yescrypt("p", "s", 16, 8, 1, 12, 2, 1) = 37 c3 db a7 e2 f4 0f 4b c6 7a ef 68 5a 2c a0 35 c4 99 9a 73 a7 ca fd c6 61 5a e3 ff 34 4e 45 ad 16 5a f3 f7 ea 3b ba 62
+yescrypt("p", "s", 16, 8, 1, 13, 3, 1) = d9 57 a4 33 5a 65 a6 5b 1f 19 6e a6 1d 24 bf ad b2 fc 0c 10 9f 91 06 50 c0 01 b9 2f fd ad 87 ad 78 d5 9a 71 72 62 20 14
+yescrypt("p", "s", 16, 8, 1, 14, 4, 1) = a7 fe fb 5b ea 6d 91 d4 cc 5c 43 48 6a 91 7b 2e e2 a2 c5 42 99 d1 2e 2c d5 67 e5 3f b1 b8 33 e8 e2 a2 41 28 1b 08 f4 19
+yescrypt("p", "s", 16, 8, 1, 15, 5, 1) = b6 07 f2 47 5b c1 3b e1 ec ba 70 a7 0f 28 7b 85 e8 64 f7 94 f2 e4 2c 35 3d e4 d6 59 43 2b d7 70 1d c0 cf 11 81 ab 3b 27
+yescrypt("p", "s", 16, 8, 1, 16, 6, 1) = 3b 62 8f 2e c3 46 9a a8 d4 18 3e a3 8e 0c d7 04 97 ce ac a0 cf 79 05 70 8c 0c 3a 98 f7 f6 6f 30 b7 43 fc 61 78 c9 cb 44
+yescrypt("p", "s", 16, 8, 1, 10, 0, 2) = 9e 7a 40 97 64 42 84 cf 3b 73 b6 04 50 ff 23 0c dc b6 b1 b1 9b 15 09 ee b4 82 f6 96 c4 f1 c7 05 c0 0f 74 02 16 18 3a 12
+yescrypt("p", "s", 16, 8, 1, 11, 1, 2) = 45 f3 b6 a6 99 b3 f4 9b 86 c9 53 22 64 ba dd 0c f8 06 0e b4 29 7f 8c 92 7c 51 71 ca 73 05 fd 28 6a 3e 25 02 f4 94 a7 4b
+yescrypt("p", "s", 16, 8, 1, 12, 2, 2) = 9c 34 20 c6 c7 e6 c7 33 32 d4 94 8a 73 6f d0 2d ac 59 35 14 54 79 ef 77 b7 db 04 79 6f bb e7 39 17 65 95 93 f0 c6 05 93
+yescrypt("p", "s", 16, 8, 1, 13, 3, 2) = 14 cf 86 25 62 31 c5 58 05 7e f7 64 74 47 ce ee 08 1f ee c3 25 db 38 df 2a ea 86 e3 6d b1 06 15 a2 e6 55 a7 1e 1b c6 8f
+yescrypt("p", "s", 16, 8, 1, 14, 4, 2) = da f4 23 96 7e 69 d1 d4 df 48 c8 b3 8c 76 31 2e dc ee f8 36 0e 7c 86 9b 04 94 6d 62 e7 7e 50 68 98 4d 24 f9 2f a5 99 df
+yescrypt("p", "s", 16, 8, 1, 15, 5, 2) = 6a 66 d5 47 90 4a 4d eb 93 e8 c2 bf d2 10 22 0a 21 ff b4 43 48 f3 fb 58 29 1d 1f 02 b2 74 da e0 34 df db d9 2d ef ac 84
+yescrypt("p", "s", 16, 8, 1, 16, 6, 2) = d9 bf a7 34 da 9b 8a 55 ac 43 0e 5c e3 83 7f 95 6a da 49 7b ab 43 8c 0e d5 20 24 ba f5 c3 c2 97 73 07 47 8c cd 19 f4 cc
+yescrypt("p", "s", 16, 8, 1, 0, 0, 1) = c8 c7 ff 11 22 b0 b2 91 c3 f2 60 89 48 78 2c d6 89 cc 45 57 90 17 aa a5 ff 8b aa 74 a6 32 ec 99 c3 d6 69 30 fb 20 23 bb
+yescrypt("p", "s", 16, 8, 1, 0, 1, 1) = 09 7a ab 14 59 db c5 37 7e bb 9f 06 df fc 52 bf 07 70 c2 c2 27 0e ff 4c 48 1f da 74 d4 04 aa 93 55 f9 a7 1a 00 2c 34 7e
+yescrypt("p", "s", 16, 8, 1, 0, 2, 1) = 06 23 c0 8f 15 c6 72 df 05 86 03 db 02 d1 1b 09 f5 bc ad c2 02 64 0b e3 03 50 18 ac f2 1f 73 cb 19 5e 6c a0 77 2e 62 cb
+yescrypt("p", "s", 16, 8, 1, 0, 3, 1) = 93 50 54 71 9f 65 1b 9d f7 5e f2 e3 90 52 db 10 bc 5a 9e a6 c8 b5 74 44 91 1e 20 a0 fe 3a 43 94 40 29 24 db ca 90 e3 f3
+yescrypt("p", "s", 16, 8, 1, 0, 4, 1) = 20 c4 15 6c bc 11 23 02 45 b1 c1 b9 ec 8d 2f 4a 5d c0 6f ce 57 27 ba f2 55 8c 45 18 ec d6 98 c3 43 b6 7f 8d ea f6 ad e6
+yescrypt("p", "s", 16, 8, 1, 0, 5, 1) = 64 14 c5 4c 79 1a 31 f7 96 bc 9d 9d 9f 92 b9 9c d9 dd eb 34 36 aa 8a 36 5d cd 47 71 6e 6f d8 89 f0 0f ee de c6 b1 ac f8
+yescrypt("p", "s", 16, 8, 1, 0, 6, 1) = e7 a2 18 d7 81 c7 fd 0e ad 2d f4 fc 88 6d 95 69 b1 f5 46 01 54 aa e0 f2 75 67 a1 c0 32 5d c6 b1 77 eb 62 43 dc 64 35 a1
+yescrypt("p", "s", 16, 8, 1, 0, 0, 2) = 9d d6 36 c2 d0 bb 92 34 52 86 ef da f8 a6 8c fc 1b 4f fd c4 b1 ad ac cc 7d 86 4b 9a 67 87 b8 5d 6a e0 f5 28 0d a8 88 9f
+yescrypt("p", "s", 16, 8, 1, 0, 1, 2) = 93 8a 00 4e 16 ff 7c 9c 1a fd 47 46 c8 f5 c8 02 c1 22 7b 7e 7c 2b 50 19 75 bc dc 2b 27 d1 cc 04 81 f0 9b a2 fd f7 69 5b
+yescrypt("p", "s", 16, 8, 1, 0, 2, 2) = 9a da a0 c4 5d 1a 91 32 80 77 e3 fd 9c b3 80 75 e0 50 e4 61 0a 74 27 6f 93 52 b7 57 25 ce 39 52 2e f5 46 2d 16 73 ef c7
+yescrypt("p", "s", 16, 8, 1, 0, 3, 2) = f3 09 11 9c 20 f6 06 36 95 c3 3c 89 f4 1b b1 d0 e9 76 1a 69 fb 67 ae 00 80 3d d9 68 7b 9d 21 77 10 a1 97 39 a2 19 6f 72
+yescrypt("p", "s", 16, 8, 1, 0, 4, 2) = df 04 5e 99 bd 91 82 13 54 cc 5c c7 16 2a 38 8f 93 e0 ec 17 ff ef 1f 36 51 d7 59 72 34 35 b0 1b c8 08 27 4c f2 4a c6 15
+yescrypt("p", "s", 16, 8, 1, 0, 5, 2) = a1 68 36 12 65 c2 e6 7a dc c9 41 d2 fa 44 26 56 77 43 20 88 c1 ea 8c 08 c1 2c 0f de 75 fe 99 eb 5c e5 47 b6 e6 e2 ea 61
+yescrypt("p", "s", 16, 8, 1, 0, 6, 2) = 64 79 5b 6e ee e3 26 97 82 ee c8 54 00 0c c1 6e 15 ad be 05 79 de f2 08 76 f5 41 f4 9e 5e 49 c9 48 93 7e 63 46 86 88 86
+yescrypt("p", "s", 16, 8, 1, 0, 0, 1) = c8 c7 ff 11 22 b0 b2 91 c3 f2 60 89 48 78 2c d6 89 cc 45 57 90 17 aa a5 ff 8b aa 74 a6 32 ec 99
+yescrypt("p", "s", 16, 8, 1, 0, 1, 1) = 09 7a ab 14 59 db c5 37 7e bb 9f 06 df fc 52 bf 07 70 c2 c2 27 0e ff 4c 48 1f da 74 d4 04 aa 93
+yescrypt("p", "s", 16, 8, 1, 0, 2, 1) = 06 23 c0 8f 15 c6 72 df 05 86 03 db 02 d1 1b 09 f5 bc ad c2 02 64 0b e3 03 50 18 ac f2 1f 73 cb
+yescrypt("p", "s", 16, 8, 1, 0, 0, 1) = c8 c7 ff 11 22 b0 b2 91
+yescrypt("p", "s", 16, 8, 1, 0, 1, 1) = 09 7a ab 14 59 db c5 37
+yescrypt("p", "s", 16, 8, 1, 0, 2, 1) = 06 23 c0 8f 15 c6 72 df
+'$7X$E6....9....WZaPV7LSUEKMo34.'
+'$7X$E6....9....WZaPV7LSUEKMo34.$HboGM6qPrsK.StKYGt6KErmUYtioHreJd98oIugoNB6'
+'$7X$D5..../....WZaPV7LSUEKMo34.$.wMUpC216rsbGvwCYNo0B/pzRZw0hnQxyehM5RlI5UB'
+'$7X0$C4....8....WZaPV7LSUEKMo34.$f1yCVqjiZQvL3om9IyWA0j3qFi6p5ClLPgW/1ZIevk0'
+'$7X0$B3..../....WZaPV7LSUEKMo34.$c9NvEqX7JE8CSX6IIlgovOd5UTpBNaQ61J5rKJPY7pD'
+'$7X$A2....7....WZaPV7LSUEKMo34.$cZxVXaXfgGjsBMdU2xQmlHZhlpl2zgVwq/4tJLBR2F.'
+'$7X$91..../....WZaPV7LSUEKMo34.$7OGMjxh4xS5IV7y9fFHzyzdNH0ltwy2GCPPxu.zEBR1'
+'$7X0$80....6....WZaPV7LSUEKMo34.$8VwOfvLmxw.IgdQ5H1NnoezC9V0Gymdsyem2p1H0M32'
+'$7X0$7/..../....WZaPV7LSUEKMo34.$1igfXGhdSHC0xcMWlN81ouQmyemo1afzHHOhYlFF0J/'
+'$7X$6/....5....WZaPV7LSUEKMo34.$YsytXP2Tbh2jIsix8jLiKDbyCEW3pQIGxZqdbi34pC3'
+'$7X$50..../....WZaPV7LSUEKMo34.$34ugQk0tQKhQIbStrj3ndlrug5DlMGJ2IdjBEFscpwD'
+'$7X0$4/....4....WZaPV7LSUEKMo34.$kTE0d1eMipEDENqYy80MGOTLmzJEsDkOiwdkRhoyct0'
+'$7X0$30..../....WZaPV7LSUEKMo34.$6zKO2vbVuTULL8OM65olbLujKzk.RsztZqoCrhcE/E/'
+'$7X$3/....3....WZaPV7LSUEKMo34.$OXCpQ0oLqN4isZOVAd1JHlE.0mfvf..bx7.607yjks4'
+'$7X$10..../....WZaPV7LSUEKMo34.$wFP1etoCogN3xPTmiu0yRUjjLx5TIYl/ixnIKrmYVc5'
+'$7X0$0/....2....WZaPV7LSUEKMo34.$TJrU9Lh83gHlljWtQS7GRaXmPJEIDSNxnY7twUjSx9/'
+'$7X0$00..../....WZaPV7LSUEKMo34.$PNEY63tVClux5HZ2u.8FPLtdcODoddysr9r/v..lKPB'
+'$7X$2/....1....WZaPV7LSUEKMo34.$L8OQFc8mxJPd7CpUFgkS7KqJM2I9jGXu3BdqX2D.647'
+'$7X$00..../....WZaPV7LSUEKMo34.$kwbWr/OCt/iiyiRZKPlFOQYvsYRpQ3N6KqWA0PfIga/'
+'$7$C6..../....SodiumChloride$kBGj9fHznVYFQMEn/qDCfrDevf9YDtcDdKvEqHJLV8D'
+'$7$06..../....SodiumChloride$ENlyo6fGw4PCcDBOFepfSZjFUnVatHzCcW55.ZGz3B0'
+r=8 N=2^11 NROM=2^18
+Will use 262144.00 KiB ROM
+         2048.00 KiB RAM
+Initializing ROM ... DONE
+'$7X$96....9....WZaPV7LSUEKMo34.'
+'$7X$96....9....WZaPV7LSUEKMo34.$FnOUK/F72WNFYR3ARbYW3/9.jXc9kvf1tCXyEksZST5'
+Initializing ROM in preallocated memory ... DONE
+'$7X$96....9....WZaPV7LSUEKMo34.$FnOUK/F72WNFYR3ARbYW3/9.jXc9kvf1tCXyEksZST5'
+'$7X$96....9....WZaPV7LSUEKMo34.$CJxGN70gdZ3IWJgBa/wcu/Uon7n2cahMz1WI1eh7hf/'
+'$7X$96....9....WZaPV7LSUEIMo34.$zNEBuejO5OILFgji1aN6klLsVwJgHSaaVA1.RBv02V3'
+'$7X$96....9....WZaPV7LSUEIMo34.$/NKb0k4ms8PwfvFiWmWjBJKZ9DVXu9upX6WsUa58bE5'
+'$7X$0/..../....WZaPV7LSUEKMo34.$Xnv/KhN6eARQezVAOLy1sW/zsCtqd0g4NMzbKxcjSwA'
