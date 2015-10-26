@@ -26,9 +26,10 @@ CFLAGS = -Wall -march=native -O2 -funroll-loops -fomit-frame-pointer $(OMPFLAGS_
 #CFLAGS = -Wall -O2 -fomit-frame-pointer $(OMPFLAGS_MAYBE)
 LDFLAGS = -s $(OMPFLAGS_MAYBE)
 
-PROJ = tests phc-test initrom userom
+PROJ = tests phc-test initrom userom tester
 OBJS_CORE = yescrypt-best.o
 OBJS_TESTS = $(OBJS_CORE) yescrypt-common.o sha256.o tests.o
+OBJS_TESTER = $(OBJS_CORE) yescrypt-common.o sha256.o tester.o
 OBJS_PHC = $(OBJS_CORE) yescrypt-common.o sha256.o phc-test.o
 OBJS_INITROM = $(OBJS_CORE) yescrypt-common.o sha256.o initrom.o
 OBJS_USEROM = $(OBJS_CORE) yescrypt-common.o sha256.o userom.o
@@ -67,6 +68,12 @@ phc-test.o: phc.c
 phc-test: $(OBJS_PHC)
 	$(LD) $(LDFLAGS) $(OBJS_PHC) -o $@
 
+tester.o: tester.c
+	$(CC) -c $(CFLAGS) -DTEST tester.c -o $@
+
+tester: $(OBJS_TESTER)
+	$(LD) $(LDFLAGS) $(OBJS_TESTER) -o $@
+
 initrom: $(OBJS_INITROM)
 	$(LD) $(LDFLAGS) $(OBJS_INITROM) -o $@
 
@@ -85,6 +92,6 @@ yescrypt-opt.o: yescrypt-platform.c
 
 clean:
 	$(RM) $(PROJ)
-	$(RM) $(OBJS_TESTS) $(OBJS_PHC) $(OBJS_INITROM) $(OBJS_USEROM)
+	$(RM) $(OBJS_TESTER) $(OBJS_TESTS) $(OBJS_PHC) $(OBJS_INITROM) $(OBJS_USEROM)
 	$(RM) $(OBJS_RM)
 	$(RM) TESTS-OUT PHC-TEST-OUT

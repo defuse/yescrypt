@@ -66,7 +66,7 @@ blkxor(uint32_t * dest, const uint32_t * src, size_t count)
  * salsa20(B):
  * Apply the Salsa20 core to the provided block.
  */
-static void
+void
 salsa20(uint32_t B[16], uint32_t rounds)
 {
 	uint32_t x[16];
@@ -166,7 +166,7 @@ typedef struct {
  * pwxform(B):
  * Transform the provided block using the provided S-boxes.
  */
-static void
+void
 pwxform(uint32_t * B, pwxform_ctx_t * ctx)
 {
 	uint32_t (*X)[PWXsimple][2] = (uint32_t (*)[PWXsimple][2])B;
