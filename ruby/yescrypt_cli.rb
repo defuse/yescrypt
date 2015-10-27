@@ -33,6 +33,7 @@ when "pwxform"
   input = input.unpack("V*")
   sbox = [ARGV[2]].pack("H*")
   sbox = sbox.unpack("V*")
+  sbox = Yescrypt::Sbox.new(sbox)
   Yescrypt.pwxform(input, sbox)
   binary = input.pack("V*")
   print binary
@@ -44,7 +45,7 @@ when "salsa20_8"
 
   binary = [ARGV[1]].pack("H*")
   ints = binary.unpack("VVVVVVVVVVVVVVVV")
-  Yescrypt.salsa20_8_core_ints(ints)
+  Yescrypt.salsa20_8_core_ints(ints, 8)
   binary = ints.pack("VVVVVVVVVVVVVVVV")
   print binary
 else

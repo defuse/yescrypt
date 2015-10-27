@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Build the testing tool.
-cd reference/yescrypt-0.7.1/yescrypt/yescrypt-0.7.1/
+cd reference/yescrypt-0.8.1/yescrypt-0.8.1
 make ref
-./tester 'ruby ../../../../ruby/yescrypt_cli.rb'
+./tester 'ruby ../../../ruby/yescrypt_cli.rb'
 
 if [ $? -ne 0 ]; then
     echo "FAIL."

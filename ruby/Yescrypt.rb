@@ -27,7 +27,7 @@ module Yescrypt
 
   PWXBYTES = PWXGATHER * PWXSIMPLE * 8
   PWXWORDS = PWXBYTES / 4
-  SBYTES = 2 * (1 << SWIDTH) * PWXSIMPLE * 8
+  SBYTES = 3 * (1 << SWIDTH) * PWXSIMPLE * 8
   SWORDS = SBYTES / 4
   SMASK = ((1 << SWIDTH) - 1) * PWXSIMPLE * 8
   RMIN = (PWXBYTES + 127) / 128
@@ -38,6 +38,18 @@ module Yescrypt
 
   LO = 0
   HI = 1
+
+  class Sbox
+    attr_accessor :S, :S0, :S1, :S2, :w
+
+    def initialize(s)
+      @S = s
+      @S2 = 0
+      @S1 = Yescrypt::SWORDS / 3
+      @S0 = (Yescrypt::SWORDS / 3) * 2
+      @w = 0
+    end
+  end
 
   def self.calculate(password, salt, n, r, p, t, g, flags, dkLen)
 
@@ -121,12 +133,12 @@ module Yescrypt
 
     if (flags & YESCRYPT_RW) != 0
       # New, YESCRYPT_RW parallelism.
-      self.sMix(n, r, t, p, b, flags)
+      self.sMix(n, r, t, p, b, flags, password)
     else
       # Classic scrypt parallelism.
       0.upto(p - 1) do |i|
         b0 = b[i * 2 * r * 16, 2 * r * 16]
-        self.sMix(n, r, t, 1, b0, flags)
+        self.sMix(n, r, t, 1, b0, flags, password)
         0.upto(2 * r * 16 - 1) do |j|
           b[i * 2 * r * 16 + j] = b0[j]
         end
@@ -215,7 +227,7 @@ module Yescrypt
     return (x & (n - 1)) + (i - n)
   end
 
-  def self.sMix(n, r, t, p, pbkdf2_blocks, flags)
+  def self.sMix(n, r, t, p, pbkdf2_blocks, flags, sha256)
 
     if !n.is_a?(Integer) || n <= 1 ||
        !r.is_a?(Integer) || r <= 0 ||
@@ -241,6 +253,7 @@ module Yescrypt
     little_n = little_n - (little_n & 1)
 
     nloop_all = nloop_all + (nloop_all & 1)
+    nloop_rw += 1
     nloop_rw = nloop_rw - (nloop_rw & 1)
 
     # Ordinarily, we'd have to check nloop_all for overflow, but Ruby does
@@ -259,11 +272,17 @@ module Yescrypt
         # Slice out the first two 64-byte blocks.
         x = pbkdf2_blocks[i * 2 * r * 16, 2 * 16]
         # Fill the sbox
-        sboxes[i] = Array.new( SWORDS ) { 0 }
-        self.sMix1(1, x, SBYTES/128, sboxes[i], flags & ~YESCRYPT_RW, nil)
+        sboxes[i] = Sbox.new( Array.new( SWORDS ) { 0 } )
+        self.sMix1(1, x, SBYTES/128, sboxes[i].S, flags & ~YESCRYPT_RW, nil)
         # Copy back over the first two 64-byte blocks.
         0.upto(2 * 16 - 1) do |j|
           pbkdf2_blocks[i * 2 * r * 16 + j] = x[j]
+        end
+
+        if i == 0
+          for_sha256_update = pbkdf2_blocks[(i+1) * 2 * r * 16 - 16, 16].pack("V*")
+          sha256_updated = self.hmac_sha256(sha256, for_sha256_update)
+          sha256[0, sha256.length] = sha256_updated
         end
       end
 
@@ -389,7 +408,7 @@ module Yescrypt
   end
 
   def self.blockmix_pwxform(r, b, sbox)
-    if !r.is_a?(Integer) || r <= 0 || !b.is_a?(Array) || b.count != 2 * r * 16 || !sbox.is_a?(Array)
+    if !r.is_a?(Integer) || r <= 0 || !b.is_a?(Array) || b.count != 2 * r * 16 || !sbox.is_a?(Sbox)
       raise ArgumentError.new("Bad arguments to blockmix_pwxform.");
     end
 
@@ -423,7 +442,7 @@ module Yescrypt
     i = (r1 - 1) * PWXWORDS / 16
 
     bi = b[i * 16, 16]
-    self.salsa20_8_core_ints(bi)
+    self.salsa20_8_core_ints(bi, 2)
     0.upto(15) do |j|
       b[i * 16 + j] = bi[j]
     end
@@ -433,7 +452,7 @@ module Yescrypt
       0.upto(15) do |j|
         bi[j] = b[i * 16 + j] ^ bi[j]
       end
-      self.salsa20_8_core_ints(bi)
+      self.salsa20_8_core_ints(bi, 2)
       0.upto(15) do |j|
         b[i*16 + j] = bi[j]
       end
@@ -441,6 +460,11 @@ module Yescrypt
   end
 
   def self.pwxform(b, sbox)
+
+    s0 = sbox.S0
+    s1 = sbox.S1
+    s2 = sbox.S2
+
     0.upto(PWXROUNDS - 1) do |i|
       0.upto(PWXGATHER - 1) do |j|
         xl = b[2*j*PWXSIMPLE + LO]
@@ -453,17 +477,28 @@ module Yescrypt
           bjklo = b[2 * (j * PWXSIMPLE + k) + LO]
           bjkhi = b[2 * (j * PWXSIMPLE + k) + HI]
 
-          s0p0k = sbox[2 * (p0 * PWXSIMPLE + k) + LO] |
-                  (sbox[2 * (p0 * PWXSIMPLE + k) + HI] << 32)
-          s1p1k = sbox[sbox.count/2 + 2 * (p1 * PWXSIMPLE + k) + LO] |
-                  (sbox[sbox.count / 2 + 2 * (p1 * PWXSIMPLE + k) + HI] << 32)
+          s0p0k = sbox.S[s0 + 2 * (p0 * PWXSIMPLE + k) + LO] |
+                  (sbox.S[s0 + 2 * (p0 * PWXSIMPLE + k) + HI] << 32)
+          s1p1k = sbox.S[s1 + 2 * (p1 * PWXSIMPLE + k) + LO] |
+                  (sbox.S[s1 + 2 * (p1 * PWXSIMPLE + k) + HI] << 32)
 
           result = (((bjkhi * bjklo) + s0p0k) ^ s1p1k) & 0xffffffffffffffff
           b[2 * (j * PWXSIMPLE + k) + LO] = result & 0xffffffff
           b[2 * (j * PWXSIMPLE + k) + HI] = (result >> 32) & 0xffffffff
+
+          if i != 0 && i != PWXROUNDS - 1
+            sbox.S[s2 + 2 * sbox.w] = result & 0xffffffff
+            sbox.S[s2 + 2 * sbox.w + 1] = (result >> 32) & 0xffffffff
+            sbox.w += 1
+          end
         end
       end
     end
+
+    sbox.S0 = s2
+    sbox.S1 = s0
+    sbox.S2 = s1
+    sbox.w = sbox.w & (SMASK / 8)
   end
 
   # x is an array of 32-bit integers.
@@ -534,7 +569,7 @@ module Yescrypt
       0.upto(15) do |j|
         x[j] ^= b[16*i + j]
       end
-      self.salsa20_8_core_ints(x)
+      self.salsa20_8_core_ints(x, 8)
       if i % 2 == 0
         0.upto(15) do |j|
           y[16 * (i/2) + j] = x[j]
@@ -551,12 +586,12 @@ module Yescrypt
     end
   end
 
-  def self.salsa20_8_core_ints(x)
+  def self.salsa20_8_core_ints(x, rounds)
     self.simd_unshuffle_block(x)
 
     copy = x.dup
 
-    8.step(1, -2) do |i|
+    rounds.step(1, -2) do |i|
           x[ 4] ^= self.rot((x[ 0]+x[12]) & 0xffffffff, 7);  x[ 8] ^= self.rot((x[ 4]+x[ 0]) & 0xffffffff, 9);
           x[12] ^= self.rot((x[ 8]+x[ 4]) & 0xffffffff,13);  x[ 0] ^= self.rot((x[12]+x[ 8]) & 0xffffffff,18);
           x[ 9] ^= self.rot((x[ 5]+x[ 1]) & 0xffffffff, 7);  x[13] ^= self.rot((x[ 9]+x[ 5]) & 0xffffffff, 9);
