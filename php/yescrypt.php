@@ -22,7 +22,7 @@ define('YESCRYPT_SWIDTH', 8);
 /* Don't touch these. */
 define('YESCRYPT_PWXBYTES', YESCRYPT_PWXGATHER * YESCRYPT_PWXSIMPLE * 8);
 define('YESCRYPT_PWXWORDS', (YESCRYPT_PWXBYTES / 4));
-define('YESCRYPT_SBYTES', 2 * (1 << YESCRYPT_SWIDTH) * YESCRYPT_PWXSIMPLE * 8);
+define('YESCRYPT_SBYTES', 3 * (1 << YESCRYPT_SWIDTH) * YESCRYPT_PWXSIMPLE * 8);
 define('YESCRYPT_SWORDS', YESCRYPT_SBYTES / 4);
 define('YESCRYPT_SMASK', ((1 << YESCRYPT_SWIDTH) - 1) * YESCRYPT_PWXSIMPLE * 8);
 define('YESCRYPT_RMIN', (int)floor((YESCRYPT_PWXBYTES + 127) / 128));
@@ -31,6 +31,23 @@ define('YESCRYPT_RMIN', (int)floor((YESCRYPT_PWXBYTES + 127) / 128));
 define('YESCRYPT_RW', 1);
 define('YESCRYPT_WORM', 2);
 define('YESCRYPT_PREHASH', 0x100000);
+
+class SBox {
+
+    public $S;
+    public $S0;
+    public $S1;
+    public $S2;
+    public $w;
+
+    public function __construct($S) {
+        $this->S = $S;
+        $this->S2 = 0;
+        $this->S1 = floor(YESCRYPT_SWORDS / 3);
+        $this->S0 = floor((YESCRYPT_SWORDS / 3) * 2);
+        $this->w = 0;
+    }
+}
 
 abstract class Yescrypt {
 
@@ -141,12 +158,12 @@ abstract class Yescrypt {
     
         if (($flags & YESCRYPT_RW) !== 0) {
             // New yescrypt paralellism (inside this call).
-            self::sMix($N, $r, $t, $p, $B, $flags);
+            self::sMix($N, $r, $t, $p, $B, $flags, $password);
         } else {
             // Classic scrypt paralellism.
             for ($i = 0; $i < $p; $i++) {
                 $B0 = array($B[$i]);
-                self::sMix($N, $r, $t, 1, $B0, $flags);
+                self::sMix($N, $r, $t, 1, $B0, $flags, $password);
                 $B[$i] = $B0[0];
             }
         }
@@ -240,7 +257,7 @@ abstract class Yescrypt {
         return ($x & ($n - 1)) + ($i - $n);
     }
 
-    public static function sMix($N, $r, $t, $p, & $pbkdf2_blocks, $flags)
+    public static function sMix($N, $r, $t, $p, & $pbkdf2_blocks, $flags, &$sha256)
     {
         $sboxes = array();
         $V = array();
@@ -269,7 +286,7 @@ abstract class Yescrypt {
         // Nloop_all <- Nloop_all + (Nloop_all mod 2)
         $Nloop_all = $Nloop_all + ($Nloop_all & 1);
 
-        // Nloop_rw <- Nloop_rw - (Nloop_rw mod 2)
+        $Nloop_rw += 1;
         $Nloop_rw = $Nloop_rw - ($Nloop_rw & 1);
 
         // Check if Nloop_all overflowed.
@@ -312,11 +329,17 @@ abstract class Yescrypt {
                     $sboxes[$i][$k] = implode($sboxes[$i][$k]);
                 }
                 $sboxes[$i] = implode($sboxes[$i]);
+                $sboxes[$i] = new SBox($sboxes[$i]);
 
                 // We copied the first two 64-byte blocks out. SMix1 changed
                 // them, so we need to write them back.
                 $pbkdf2_blocks[$i][0] = $x[0];
                 $pbkdf2_blocks[$i][1] = $x[1];
+
+                if ($i === 0) {
+                    $for_sha256 = $pbkdf2_blocks[$i][2*$r - 1];
+                    $sha256 = hash_hmac('sha256', $sha256, $for_sha256, true);
+                }
             }
 
             // SMix1_r(B_i, n, V_{v...w}, flags)
@@ -462,7 +485,7 @@ abstract class Yescrypt {
 
         // B_i <- H(B_i) (where H is salsa20/8)
         $Bi = substr($flat, $i * 64, 64);
-        $Bi = self::salsa20_8_core_binary($Bi);
+        $Bi = self::salsa20_core_binary($Bi, 2);
         for ($j = 0; $j < 64; $j++) {
             $flat[$i * 64 + $j] = $Bi[$j];
         }
@@ -474,7 +497,7 @@ abstract class Yescrypt {
             // Instead of re-reading B_{i-1} we just save it from the last
             // iteration.
             $Bi = substr($flat, $i * 64, 64);
-            $Bim1 = self::salsa20_8_core_binary($Bi ^ $Bim1);
+            $Bim1 = self::salsa20_core_binary($Bi ^ $Bim1, 2);
             for ($j = 0; $j < 64; $j++) {
                 $flat[$i * 64 + $j] = $Bim1[$j];
             }
@@ -494,14 +517,15 @@ abstract class Yescrypt {
             $ints[$i] = unpack("V", $split[$i])[1];
         }
 
+        $S0 = $sbox->S0;
+        $S1 = $sbox->S1;
+        $S2 = $sbox->S2;
+
         // Split $sbox into 64-bit integers.
         $sbox_ints = array();
-        $split = str_split($sbox, 8);
+        $split = str_split($sbox->S, 4);
         for ($i = 0; $i < count($split); $i++) {
-            // XXX: 64-bit only.
-            // We can't use "P" here because it's only in PHP 5.6.
             $sbox_ints[$i] = unpack("V", substr($split[$i], 0, 4))[1];
-            $sbox_ints[$i] |= unpack("V", substr($split[$i], 4, 4))[1] << 32;
         }
 
         // Instead of splitting into 64-bit integers and then using shifts to
@@ -540,9 +564,11 @@ abstract class Yescrypt {
                     $BjkHI = $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $HI];
 
                     // S0_p0,k
-                    $S0p0k = $sbox_ints[$p0 * YESCRYPT_PWXSIMPLE + $k];
+                    $S0p0k = ($sbox_ints[$S0 + 2 * ($p0 * YESCRYPT_PWXSIMPLE + $k) + 1] << 32) + 
+                               $sbox_ints[$S0 + 2 * ($p0 * YESCRYPT_PWXSIMPLE + $k)];
                     // S1_p1,k
-                    $S1p1k = $sbox_ints[count($sbox_ints) / 2 + $p1 * YESCRYPT_PWXSIMPLE + $k];
+                    $S1p1k = ($sbox_ints[$S1 + 2 * ($p1 * YESCRYPT_PWXSIMPLE + $k) + 1] << 32) +
+                                $sbox_ints[$S1 + 2 * ($p1 * YESCRYPT_PWXSIMPLE + $k)];
 
                     // B_j,k <- (hi(B_j,k) * lo(B_j,k) + S0_p0,k) XOR S1_p1,k
 
@@ -597,8 +623,25 @@ abstract class Yescrypt {
                     // Save back into B_j,k.
                     $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $LO] = $NBjkLO;
                     $ints[2 * ($j * YESCRYPT_PWXSIMPLE + $k) + $HI] = $NBjkHI;
+
+                    if ($i !== 0 && $i !== YESCRYPT_PWXROUNDS - 1) {
+                        $sbox_ints[$S2 + 2 * $sbox->w] = $NBjkLO;
+                        $sbox_ints[$S2 + 2 * $sbox->w + 1] = $NBjkHI;
+                        $sbox->w += 1;
+                    }
                 }
             }
+        }
+
+        $sbox->S0 = $S2;
+        $sbox->S1 = $S0;
+        $sbox->S2 = $S1;
+        $sbox->w = $sbox->w & (YESCRYPT_SMASK / 8);
+
+        // Save the modified sbox.
+        $sbox->S = "";
+        for ($i = 0; $i < count($sbox_ints); $i++) {
+            $sbox->S .= pack("V", $sbox_ints[$i]);
         }
 
         // Return the result by modifying the input parameter.
@@ -689,7 +732,7 @@ abstract class Yescrypt {
                 throw new DomainException("block is not 64 bytes in scryptBlockMix");
             }
             $t = $x ^ $B[$i];
-            $x = self::salsa20_8_core_binary($t);
+            $x = self::salsa20_core_binary($t, 8);
             if ($i % 2 === 0) {
                 $y[$i / 2] = $x;
             } else {
@@ -699,10 +742,10 @@ abstract class Yescrypt {
         $B = $y;
     }
 
-    public static function salsa20_8_core_binary($in)
+    public static function salsa20_core_binary($in, $rounds)
     {
         if (self::our_strlen($in) != 64) {
-            throw new DomainException("Block passed to salsa20_8_core_binary is not 64 bytes");
+            throw new DomainException("Block passed to salsa20_core_binary is not 64 bytes");
         }
 
         $in = self::simd_unshuffle_block($in);
@@ -713,7 +756,7 @@ abstract class Yescrypt {
             $input_ints[$i] = unpack("V", $input_ints[$i])[1];
             $output_ints[$i] = 0;
         }
-        self::salsa20_8_core_ints($input_ints, $output_ints);
+        self::salsa20_core_ints($input_ints, $output_ints, $rounds);
         $out = "";
         for ($i = 0; $i < 16; $i++) {
             $out .= pack("V", $output_ints[$i]);
@@ -729,21 +772,21 @@ abstract class Yescrypt {
      * Both parameters $in and $out must be a 16-entry array of ints.
      * The result is left in $out.
      */
-    public static function salsa20_8_core_ints($in, & $out)
+    public static function salsa20_core_ints($in, & $out, $rounds)
     {
         if (!is_array($in) || count($in) != 16 || !is_array($out) || count($out) != 16) {
-            throw new DomainException("bad parameters to salsa20_8_core_ints");
+            throw new DomainException("bad parameters to salsa20_core_ints");
         }
     
         $x = array();
         for ($i = 0; $i < 16; $i++) {
             if (!is_int($in[$i]) || !is_int($out[$i])) {
-                throw new DomainException("bad value in array passed to salsa20_8_core_ints");
+                throw new DomainException("bad value in array passed to salsa20_core_ints");
             }
             $x[$i] = $in[$i];
         }
     
-        for ($i = 8; $i > 0; $i -= 2) {
+        for ($i = $rounds; $i > 0; $i -= 2) {
              $x[ 4] ^= self::R(($x[ 0]+$x[12]) & 0xffffffff, 7);  $x[ 8] ^= self::R(($x[ 4]+$x[ 0]) & 0xffffffff, 9);
              $x[12] ^= self::R(($x[ 8]+$x[ 4]) & 0xffffffff,13);  $x[ 0] ^= self::R(($x[12]+$x[ 8]) & 0xffffffff,18);
              $x[ 9] ^= self::R(($x[ 5]+$x[ 1]) & 0xffffffff, 7);  $x[13] ^= self::R(($x[ 9]+$x[ 5]) & 0xffffffff, 9);

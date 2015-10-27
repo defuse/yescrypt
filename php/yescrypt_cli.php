@@ -55,6 +55,7 @@ case "pwxform":
     if (strlen($sbox) !== YESCRYPT_SBYTES) {
         die('SBox is of incorrect length.');
     }
+    $sbox = new SBox($sbox);
     Yescrypt::pwxform($b, $sbox);
     echo $b;
     break;
@@ -66,7 +67,7 @@ case "salsa20_8":
     if (strlen($b) !== 64) {
         die('Input is of incorrect length.');
     }
-    $result = Yescrypt::salsa20_8_core_binary($b);
+    $result = Yescrypt::salsa20_core_binary($b, 8);
     echo $result;
     break;
 default:
