@@ -11,4 +11,5 @@ script:
     - ./test-php.sh
     - ./test-ruby.sh
     - ./test-javascript.sh
+    - ./test-python.sh
 
