@@ -373,7 +373,7 @@ def fNloop(n, t, flags):
     if (flags & YESCRYPT_RW) != 0:
         if t == 0:
             return (n + 2) // 3
-        elif 1 == 1:
+        elif t == 1:
             return (2 * n + 2) // 3
         else:
             return (t - 1) * n
@@ -396,7 +396,7 @@ def p2floor(x):
 
 def wrap(x, i):
     n = p2floor(i)
-    return x & (n-1) + (i-n)
+    return (x & (n-1)) + (i-n)
 
 # XXX: return type of these?
 def sha256(message):
