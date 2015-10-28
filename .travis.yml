@@ -6,6 +6,7 @@ php:
 
 install:
     - npm install sjcl
+    - pip install pbkdf2
 
 script:
     - ./test-php.sh
