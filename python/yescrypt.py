@@ -14,15 +14,23 @@ PWXROUNDS = 6;
 SWIDTH = 8;
 
 PWXBYTES = PWXGATHER * PWXSIMPLE * 8;
-PWXWORDS = PWXBYTES / 4;
-SBYTES = 2 * (1 << SWIDTH) * PWXSIMPLE * 8;
-SWORDS = SBYTES / 4;
+PWXWORDS = PWXBYTES // 4;
+SBYTES = 3 * (1 << SWIDTH) * PWXSIMPLE * 8;
+SWORDS = SBYTES // 4;
 SMASK = ((1 << SWIDTH) - 1) * PWXSIMPLE * 8;
-RMIN = (PWXBYTES + 127) / 128;
+RMIN = (PWXBYTES + 127) // 128;
 
 YESCRYPT_RW = 1;
 YESCRYPT_WORM = 2;
 YESCRYPT_PREHASH = 0x100000;
+
+class Sbox:
+    def __init__(self, S):
+        self.S = S
+        self.S2 = 0
+        self.S1 = SWORDS // 3
+        self.S0 = (SWORDS // 3) * 2
+        self.w = 0
 
 def calculate(password, salt, N, r, p, t, g, flags, dkLen):
 
@@ -47,11 +55,11 @@ def calculate(password, salt, N, r, p, t, g, flags, dkLen):
             password[i] = bbytes[i]
 
     if (flags & YESCRYPT_RW) != 0:
-        sMix(N, r, t, p, B, flags)
+        sMix(N, r, t, p, B, flags, password)
     else:
         for i in xrange(0, p):
             Bi = B[i * 2 * r * 16: i * 2 * r * 16 + 2 * r * 16]
-            sMix(N, r, t, 1, Bi, flags)
+            sMix(N, r, t, 1, Bi, flags, password)
             B[i * 2 * r * 16 : i * 2 * r * 16 + 2 * r * 16] = Bi
 
     bbytes = ''.join(pack('I', b) for b in B)
@@ -67,11 +75,11 @@ def calculate(password, salt, N, r, p, t, g, flags, dkLen):
 
     return result[0:dkLen]
 
-def sMix(N, r, t, p, blocks, flags):
+def sMix(N, r, t, p, blocks, flags, sha256):
 
     sboxes = []
     for i in xrange(0, p):
-        sboxes.append(array('L', [0] * SWORDS))
+        sboxes.append(Sbox(array('L', [0] * SWORDS)))
 
     n = N//p
     Nloop_all = fNloop(n, t, flags)
@@ -83,6 +91,7 @@ def sMix(N, r, t, p, blocks, flags):
     n = n - (n & 1)
 
     Nloop_all = Nloop_all + (Nloop_all & 1)
+    Nloop_rw += 1
     Nloop_rw = Nloop_rw - (Nloop_rw & 1)
 
     V = array('L', [0] * N * 2 * r * 16)
@@ -94,8 +103,15 @@ def sMix(N, r, t, p, blocks, flags):
 
         if (flags & YESCRYPT_RW) != 0:
             twocells = blocks[i * 2 * r * 16 : i * 2 * r * 16 + 32]
-            sMix1(1, twocells, SBYTES//128, sboxes[i], flags & ~YESCRYPT_RW, None)
+            sMix1(1, twocells, SBYTES//128, sboxes[i].S, flags & ~YESCRYPT_RW, None)
             blocks[i * 2 * r * 16: i * 2 * r * 16 + 32] = twocells
+
+            if i == 0:
+                for_sha256_update = blocks[(i+1) * 2 * r * 16 - 16 : (i+1) * 2 * r * 16]
+                for_sha256_update = ''.join(pack('I', b) for b in for_sha256_update)
+                sha256_new = hmac_sha256(for_sha256_update, sha256)
+                for j in xrange(0, 32):
+                    sha256[j] = sha256_new[j]
         else:
             sboxes[i] = None
 
@@ -181,7 +197,7 @@ def blockmix_pwxform(r, block, sbox):
     # XXX: make a new array type with fast slicing
     i = (pwx_blocks - 1) * PWXWORDS // 16
     bi = block[i * 16 : (i * 16) + 16]
-    salsa20_8(bi)
+    salsa20(bi, 2)
     for j in xrange(0, 16):
         block[i * 16 + j] = bi[j]
 
@@ -191,13 +207,17 @@ def blockmix_pwxform(r, block, sbox):
             block[i * 16 + j] ^= block[ (i-1) * 16 + j ]
 
         bi = b[i * 16 : (i * 16) + 16]
-        salsa20_8(bi)
+        salsa20(bi, 2)
         for j in xrange(0, 16):
             block[i * 16 + j] = bi[j]
 
         i += 1
 
 def pwxform(pwxblock, sbox):
+
+    S0 = sbox.S0
+    S1 = sbox.S1
+    S2 = sbox.S2
 
     for i in xrange(0, PWXROUNDS):
         for j in xrange(0, PWXGATHER):
@@ -211,11 +231,11 @@ def pwxform(pwxblock, sbox):
                 lo = pwxblock[2 * (j * PWXSIMPLE + k)]
                 hi = pwxblock[2 * (j * PWXSIMPLE + k) + 1]
 
-                s0_lo = sbox[2 * (p0 * PWXSIMPLE + k)]
-                s0_hi = sbox[2 * (p0 * PWXSIMPLE + k) + 1]
+                s0_lo = sbox.S[S0 + 2 * (p0 * PWXSIMPLE + k)]
+                s0_hi = sbox.S[S0 + 2 * (p0 * PWXSIMPLE + k) + 1]
 
-                s1_lo = sbox[SWORDS / 2 + 2 * (p1 * PWXSIMPLE + k)]
-                s1_hi = sbox[SWORDS / 2 + 2 * (p1 * PWXSIMPLE + k) + 1]
+                s1_lo = sbox.S[S1 + 2 * (p1 * PWXSIMPLE + k)]
+                s1_hi = sbox.S[S1 + 2 * (p1 * PWXSIMPLE + k) + 1]
 
                 # XXX: long/non-long side channel
                 result = ((hi * lo) + s0_lo + (s0_hi << 32)) ^ s1_lo ^ (s1_hi << 32)
@@ -224,6 +244,16 @@ def pwxform(pwxblock, sbox):
 
                 pwxblock[2 * (j * PWXSIMPLE + k)] = result_lo
                 pwxblock[2 * (j * PWXSIMPLE + k) + 1] = result_hi
+
+                if i != 0 and i != PWXROUNDS - 1:
+                    sbox.S[S2 + 2 * sbox.w] = result_lo
+                    sbox.S[S2 + 2 * sbox.w + 1] = result_hi
+                    sbox.w += 1
+
+    sbox.S0 = S2
+    sbox.S1 = S0
+    sbox.S2 = S1
+    sbox.w = sbox.w & (SMASK // 8)
 
 def blockmix_salsa8(r, block):
     X = array('L', [0] * 16)
@@ -236,7 +266,7 @@ def blockmix_salsa8(r, block):
     for i in xrange(0, 2 * r):
         for j in xrange(0, 16):
             X[j] ^= block[i * 16 + j]
-        salsa20_8(X)
+        salsa20(X, 8)
         if i % 2 == 0:
             for j in xrange(0, 16):
                 Y[i//2 * 16 + j] = X[j]
@@ -249,7 +279,7 @@ def blockmix_salsa8(r, block):
 
 # Stolen from:  XXX: make any improvements to this
 # https://github.com/ricmoo/pyscrypt/blob/master/pyscrypt/hash.py
-def salsa20_8(B):
+def salsa20(B, rounds):
     '''Salsa 20/8 stream cypher; Used by BlockMix. See http://en.wikipedia.org/wiki/Salsa20'''
 
     simd_unshuffle_block(1, B)
@@ -273,7 +303,7 @@ def salsa20_8(B):
     # for (destination, a1, a2, b) in ROUNDS:
     #     a = (x[a1] + x[a2]) & 0xffffffff
     #     x[destination] ^= ((a << b)  | (a >> (32 - b))) & 0xffffffff
-    for i in (8, 6, 4, 2):
+    for i in range(rounds, 0, -2):
         a = (x[0] + x[12]) & 0xffffffff
         x[4] ^= ((a << 7) | (a >> 25))
         a = (x[4] + x[0]) & 0xffffffff

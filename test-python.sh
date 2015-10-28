@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Build the testing tool.
-cd reference/yescrypt-0.7.1/yescrypt/yescrypt-0.7.1/
+cd reference/yescrypt-0.8.1/yescrypt-0.8.1
 make ref
 
-./tester "python2 ../../../../python/yescrypt-cli.py"
+./tester "python2 ../../../python/yescrypt-cli.py"
 
 if [ $? -ne 0 ]; then
     echo "FAIL."

@@ -42,6 +42,7 @@ elif sys.argv[1] == "pwxform":
     sbox = bytearray.fromhex(sys.argv[3])
     sbox = unpack('I' * (len(sbox)//4), sbox)
     sbox = array('L', sbox)
+    sbox = yescrypt.Sbox(sbox)
 
     yescrypt.pwxform(pwxblock, sbox)
 
@@ -57,7 +58,7 @@ elif sys.argv[1] == "salsa20_8":
     cell = unpack('I' * (len(cell)//4), cell)
     cell = array('L', cell)
 
-    yescrypt.salsa20_8(cell)
+    yescrypt.salsa20(cell, 8)
 
     for n in cell:
         sys.stdout.write(pack('I', n))
