@@ -6,6 +6,10 @@ sjcl = require('sjcl');
 // Include yescrypt.js without having to add node-js-stuff into that file.
 var fs = require('fs');
 eval(fs.readFileSync(__dirname + '/yescrypt.js')+'');
+/*
+eval(fs.readFileSync(__dirname + '/ecmascript_simd.js')+'');
+eval(fs.readFileSync(__dirname + '/yescrypt-simd.js')+'');
+*/
 
 var argv = process.argv.slice(2);
 
@@ -66,7 +70,7 @@ switch (argv[0]) {
     case 'salsa20_8':
         var cell = hexToUint8Array(argv[1]);
         var cell32 = new Uint32Array(cell.buffer);
-        yescrypt.salsa20(cell32, 8);
+        yescrypt.salsa20_8(cell32);
         process.stdout.write(
             toNodeBuffer(cell)
         );

@@ -10,6 +10,11 @@
     <body>
         <input type="button" value="Click me" onclick="clicked()" />
         <script>
+/*
+            SIMD.Uint32x4 = SIMD.Int32x4;
+            SIMD.Uint32x4.shiftRightByScalar = SIMD.Int32x4.shiftRightLogicalByScalar;
+            */
+
             function clicked() {
                 var result = yescrypt.calculate(strToUint8("password"), strToUint8("NaCl"), 1024, 8, 16, 0, 0, 1, 64);
                 var w = yescrypt.using_simd ? "with SIMD" : "WITHOUT SIMD";

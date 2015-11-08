@@ -302,14 +302,14 @@ yescrypt.blockmix_pwxform = function (r, block, sbox) {
 
     // TODO: just make sure PWXWORDS is divisible by 16
     var i = Math.floor((pwx_blocks - 1) * this.PWXWORDS / 16);
-    this.salsa20(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16), 2);
+    this.salsa20_2(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16));
 
     // TODO: check this stuff
     for (i = i + 1; i < 2 * r; i++) {
         for (var j = 0; j < 16; j++) {
             block[i * 16 + j] ^= block[ (i - 1) * 16 + j ];
         }
-        this.salsa20(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16), 2);
+        this.salsa20_2(new Uint32Array(block.buffer, block.byteOffset + i * 16 * 4, 16));
     }
 };
 
@@ -400,7 +400,7 @@ yescrypt.blockmix_salsa8 = function (r, block) {
         for (var j = 0; j < 16; j++) {
             X[j] ^= block[i * 16 + j];
         }
-        this.salsa20(X, 8);
+        this.salsa20_8(X);
         if (i % 2 === 0) {
             for (var j = 0; j < 16; j++) {
                 Y[i/2 * 16 + j] = X[j];
@@ -416,6 +416,14 @@ yescrypt.blockmix_salsa8 = function (r, block) {
         block[i] = Y[i];
     }
 };
+
+yescrypt.salsa20_8 = function (cell) {
+    this.salsa20(cell, 8);
+}
+
+yescrypt.salsa20_2 = function (cell) {
+    this.salsa20(cell, 2);
+}
 
 yescrypt.salsa20 = function (cell, rounds) {
     // XXX: 0.5 hack... fix this when the spec is updated.
