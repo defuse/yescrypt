@@ -41,3 +41,10 @@ Reporting Security Bugs
 Please disclose bugs publicly by opening an issue on GitHub. If you need to
 disclose privately for some reason, or don't have a GitHub account, you can find
 my contact information [here](https://defuse.ca/contact.htm).
+
+The `ecmascript_simd` polyfill
+--------------------------------
+
+The polyfill for SIMD operations, in `javascript/ecmascript_simd.js`, was taken
+from [tc38/ecmascript_simd](https://github.com/tc39/ecmascript_simd/) and
+modified to support `shiftRightLogicalByScalar` on `Int32x4`.

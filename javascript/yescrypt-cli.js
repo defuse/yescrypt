@@ -6,12 +6,15 @@ sjcl = require('sjcl');
 // Include yescrypt.js without having to add node-js-stuff into that file.
 var fs = require('fs');
 eval(fs.readFileSync(__dirname + '/yescrypt.js')+'');
-/*
-eval(fs.readFileSync(__dirname + '/ecmascript_simd.js')+'');
-eval(fs.readFileSync(__dirname + '/yescrypt-simd.js')+'');
-*/
 
-var argv = process.argv.slice(2);
+var argv;
+if (process.argv[2] === "SIMD") {
+    argv = process.argv.slice(3);
+    eval(fs.readFileSync(__dirname + '/ecmascript_simd.js')+'');
+    eval(fs.readFileSync(__dirname + '/yescrypt-simd.js')+'');
+} else {
+    argv = process.argv.slice(2);
+}
 
 if (argv.length < 1) {
     console.log('Not enough arguments.');
