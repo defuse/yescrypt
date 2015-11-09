@@ -38,7 +38,22 @@ def calculate(password, salt, N, r, p, t, g, flags, dkLen):
         raise Exception("YESCRYPT_RW requires N/p >= 2")
 
     if (flags & YESCRYPT_RW) != 0 and p >= 1 and N//p >= 0x100 and N//p * r >= 0x20000:
-        password = this.calculate(password, salt, N >> 6, r, p, 0, 0, flags | YESCRYPT_PREHASH, 32)
+        password = calculate(password, salt, N >> 6, r, p, 0, 0, flags | YESCRYPT_PREHASH, 32)
+
+    for i in range(0, g+1):
+        if i == g:
+            dklen_g = dkLen
+        else:
+            dklen_g = 32
+
+        password = yescrypt_kdf_body(password, salt, N, r, p, t, flags, dklen_g)
+
+        N <<= 2
+        t >>= 1
+
+    return password
+
+def yescrypt_kdf_body(password, salt, N, r, p, t, flags, dkLen):
 
     if flags != 0:
         key = "yescrypt"

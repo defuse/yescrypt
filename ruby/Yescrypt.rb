@@ -97,8 +97,8 @@ module Yescrypt
       raise ArgumentError.new("p is too small.")
     end
 
-    if g != 0
-      raise NotImplementedError.new("g > 0 is not supported yet.")
+    if g < 0
+      raise NotImplementedError.new("g must be non-negative")
     end
 
     if flags == 0 && t != 0
@@ -115,6 +115,23 @@ module Yescrypt
     if (flags & YESCRYPT_RW) != 0 && p >= 1 && n/p >= 0x100 && n/p * r >= 0x20000
       password = self.calculate(password, salt, n >> 6, r, p, 0, 0, flags | YESCRYPT_PREHASH, 32)
     end
+
+    0.upto(g) do |i|
+      if i == g
+        dklen_g = dkLen
+      else
+        dklen_g = 32
+      end
+
+      password = self.yescrypt_kdf_body(password, salt, n, r, p, t, flags, dklen_g)
+      n <<= 2;
+      t >>= 1;
+    end
+
+    return password
+  end
+
+  def self.yescrypt_kdf_body(password, salt, n, r, p, t, flags, dkLen)
 
     if flags != 0
       key = "yescrypt"

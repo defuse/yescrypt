@@ -51,11 +51,6 @@ class SBox {
 
 abstract class Yescrypt {
 
-    /*
-     * WARNING: Calling this function may trigger a memory allocation error.
-     * Make sure to set an error handler to detect this case as per
-     * http://stackoverflow.com/a/8440791
-     */
     public static function calculate($password, $salt, $N, $r, $p, $t, $g, $flags, $dkLen)
     {
         if (PHP_INT_SIZE < 8) {
@@ -107,8 +102,8 @@ abstract class Yescrypt {
             throw new DomainException("p is too small.");
         }
 
-        if ($g !== 0) {
-            throw new DomainException("g > 0 is not supported yet.");
+        if ($g < 0) {
+            throw new DomainException("g must be nonnegative");
         }
 
         // The largest value computed is 128 * $r * $p, and we want that to fit
@@ -135,6 +130,31 @@ abstract class Yescrypt {
             $password = self::calculate($password, $salt, $N >> 6, $r, $p, 0, 0, $flags | YESCRYPT_PREHASH, 32);
         }
 
+        for ($i = 0; $i <= $g; $i++) {
+            if ($i === $g) {
+                $dklen_g = $dkLen;
+            } else {
+                $dklen_g = 32;
+            }
+
+            $password = self::yescrypt_kdf_body($password, $salt, $N, $r, $p, $t, $flags, $dklen_g);
+
+            /* XXX: check for overflow. */
+            $N <<= 2;
+            $t >>= 1;
+        }
+
+        return $password;
+    }
+
+
+    /*
+     * WARNING: Calling this function may trigger a memory allocation error.
+     * Make sure to set an error handler to detect this case as per
+     * http://stackoverflow.com/a/8440791
+     */
+    private static function yescrypt_kdf_body($password, $salt, $N, $r, $p, $t, $flags, $dkLen)
+    {
         if ($flags !== 0) {
             // Pre-hash to stop long passwords from being replacable by their
             // SHA256 hash (a quirk of HMAC).

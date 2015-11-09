@@ -21,12 +21,6 @@ yescrypt.YESCRYPT_PREHASH = 0x100000;
 
 yescrypt.using_simd = false;
 
-/*
- * password:    a Uint8Array.
- * salt:        a Uint8Array.
- *
- * Returns:     a Uint8Array.
- */
 yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
 
     if (!this.isInt32(flags) || (flags & ~(this.YESCRYPT_RW | this.YESCRYPT_WORM | this.YESCRYPT_PREHASH)) !== 0) {
@@ -73,8 +67,8 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
         throw 'p is too small.';
     }
 
-    if (g !== 0) {
-        throw 'g > 0 is not supported yet.';
+    if (g < 0) {
+        throw 'g must be non-negative.';
     }
 
     if(flags === 0 && t !== 0) {
@@ -92,6 +86,32 @@ yescrypt.calculate = function (password, salt, N, r, p, t, g, flags, dkLen) {
     if ( (flags & this.YESCRYPT_RW) !== 0 && p >= 1 && Math.floor(N/p) >= 0x100 && Math.floor(N/p) * r >= 0x20000 ) {
         password = this.calculate(password, salt, N >> 6, r, p, 0, 0, flags | this.YESCRYPT_PREHASH, 32);
     }
+
+    var dklen_g;
+    for (var i = 0; i <= g; i++) {
+        if (i == g) {
+            dklen_g = dkLen;
+        } else {
+            dklen_g = 32;
+        }
+
+        password = this.yescrypt_kdf_body(password, salt, N, r, p, t, flags, dklen_g);
+
+        // XXX: watch for overflow on this one
+        N <<= 2;
+        t >>>= 1;
+    }
+
+    return password;
+};
+
+/*
+ * password:    a Uint8Array.
+ * salt:        a Uint8Array.
+ *
+ * Returns:     a Uint8Array.
+ */
+yescrypt.yescrypt_kdf_body = function (password, salt, N, r, p, t, flags, dkLen) {
 
     if (flags != 0) {
         var key = "yescrypt";

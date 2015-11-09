@@ -40,6 +40,7 @@ extern void salsa20(uint32_t B[16], uint32_t rounds);
 #define TEST_MAX_R 4
 #define TEST_MAX_P 4
 #define TEST_MAX_T 4
+#define TEST_MAX_G 1
 #define TEST_PASSPHRASE_LEN 11
 #define TEST_SALT_LEN       11
 #define TEST_PASSPHRASE "\x00pass\xFFword\x00"
@@ -399,6 +400,12 @@ testcase_t custom_cases[] = {
     { "",              0,                   TEST_SALT, TEST_SALT_LEN, 4, 4, 2, 0, 0, 32 },
     // empty salt
     { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, "",        0,             4, 4, 2, 0, 0, 32 },
+    // big g
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 4, 2, 0, 1, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 4, 2, 0, 2, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 4, 2, 0, 3, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 2, 4, 2, 0, 4, 32 },
+    { TEST_PASSPHRASE, TEST_PASSPHRASE_LEN, TEST_SALT, TEST_SALT_LEN, 4, 4, 2, 1, 2, 32 },
 };
 
 int main(int argc, char **argv)
@@ -411,7 +418,7 @@ int main(int argc, char **argv)
     int fail = 0;
     int i;
 
-    unsigned long N, r, p, t;
+    unsigned long N, r, p, t, g;
 
     printf("Testing salsa20/8.\n");
     for (i = 0; i < 100; i++) {
@@ -465,59 +472,61 @@ int main(int argc, char **argv)
         for (r = 1; r <= TEST_MAX_R; r++) {
             for (p = 1; p <= TEST_MAX_P; p++) {
                 for (t = 0; t <= TEST_MAX_T; t++) {
-                    // >= 32 byte output.
-                    if (t == 0) {
+                    for (g = 0; g <= TEST_MAX_G; g++) {
+                        // >= 32 byte output.
+                        if (t == 0) {
+                            fail |= test_yescrypt(
+                                argv[1],
+                                (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                                (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
+                                N, r, p, t, g, 0,
+                                64
+                            );
+                        }
+                        if (N/p > 1) {
+                            fail |= test_yescrypt(
+                                argv[1],
+                                (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                                (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
+                                N, r, p, t, g, YESCRYPT_RW,
+                                64
+                            );
+                        }
                         fail |= test_yescrypt(
                             argv[1],
                             (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
                             (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
-                            N, r, p, t, 0, 0,
+                            N, r, p, t, g, YESCRYPT_WORM,
                             64
                         );
-                    }
-                    if (N/p > 1) {
-                        fail |= test_yescrypt(
-                            argv[1],
-                            (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
-                            (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
-                            N, r, p, t, 0, YESCRYPT_RW,
-                            64
-                        );
-                    }
-                    fail |= test_yescrypt(
-                        argv[1],
-                        (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
-                        (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
-                        N, r, p, t, 0, YESCRYPT_WORM,
-                        64
-                    );
 
-                    // < 32 byte output.
-                    if (t == 0) {
+                        // < 32 byte output.
+                        if (t == 0) {
+                            fail |= test_yescrypt(
+                                argv[1],
+                                (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                                (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
+                                N, r, p, t, g, 0,
+                                16
+                            );
+                        }
+                        if (N/p > 1) {
+                            fail |= test_yescrypt(
+                                argv[1],
+                                (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
+                                (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
+                                N, r, p, t, g, YESCRYPT_RW,
+                                16
+                            );
+                        }
                         fail |= test_yescrypt(
                             argv[1],
                             (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
                             (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
-                            N, r, p, t, 0, 0,
+                            N, r, p, t, g, YESCRYPT_WORM,
                             16
                         );
                     }
-                    if (N/p > 1) {
-                        fail |= test_yescrypt(
-                            argv[1],
-                            (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
-                            (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
-                            N, r, p, t, 0, YESCRYPT_RW,
-                            16
-                        );
-                    }
-                    fail |= test_yescrypt(
-                        argv[1],
-                        (const uint8_t *)TEST_PASSPHRASE, TEST_PASSPHRASE_LEN,
-                        (const uint8_t *)TEST_SALT, TEST_SALT_LEN,
-                        N, r, p, t, 0, YESCRYPT_WORM,
-                        16
-                    );
                 }
             }
         }
