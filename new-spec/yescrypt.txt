@@ -170,7 +170,7 @@ Copyright
 
     PWXBYTES = PWXGATHER * PWXSIMPLE * 8
     PWXWORDS = PWXBYTES / 4
-    SBYTES   = 2 * (2^SWIDTH) * PWXSIMPLE * 8
+    SBYTES   = 3 * (2^SWIDTH) * PWXSIMPLE * 8
     SWORDS   = SBYTES / 4
     SMASK    = ((2^SWIDTH) - 1) * PWXSIMPLE * 8
     RMIN     = (PWXBYTES + 127) / 128
@@ -190,7 +190,11 @@ Copyright
     refer to the first word in the first cell of B, and B[0][1] will refer to
     the second word in the first cell of B.
 
-    Additionally, an "sbox" refers to an array of SWORDS words.
+    Yescrypt uses a data structure called an Sbox. An sbox is an array S of
+    SWORDS words with three pointers (equivalently, indices) into it, called S0,
+    S1, and S2, and an integer w. When initialized, S2 points to the beginning
+    of S, S1 points a third of the way into S (index SWORDS / 3), and S2 points
+    two-thirds of the way into S (index 2 * SWORDS / 3).
 
     Whenever a block or cell needs to be interpreted as a byte array, the words
     should be encoded in little-endian byte order.
@@ -209,7 +213,7 @@ Copyright
     some of the functions return values by modifying one of their input
     parameters. The functions' actions are specified in pseudocode.
 
-5.1. yescrypt
+5.0. yescrypt_kdf
 
     Input (See Section 2 for explanations and constraints):
 
@@ -237,14 +241,11 @@ Copyright
 
         DK          - A key derived from the password and salt according to the
                       other parameters.
-
     Preconditions:
 
         - See Section 2.
 
     Steps:
-
-        # TODO: This is missing the G > 0 stuff.
 
         if
             YESCRYPT_RW flag is set AND
@@ -265,6 +266,50 @@ Copyright
             )
         end if
 
+        for i = 0 to g - 1 do
+            Password = yescrypt_kdf_body(Password, Salt, N, R, P, T, Flags, 32)
+
+            N = N * 4
+            T = floor(T / 2)
+        end
+
+        Password = yescrypt_kdf_body(Password, Salt, N, R, P, T, Flags, DKLen)
+
+        return Password
+
+5.1. yescrypt_kdf_body
+
+    Input (See Section 2 for explanations and constraints):
+
+        Password
+
+        Salt
+
+        N
+
+        R
+
+        P
+
+        T
+
+        Flags
+
+        [ROM]
+
+        DKLen
+
+    Output:
+
+        DK          - A key derived from the password and salt according to the
+                      other parameters.
+
+    Preconditions:
+
+        - See Section 2.
+
+    Steps:
+
         if YESCRYPT_PREHASH flag is set then
             Password = HMAC-SHA256(Password, "yescrypt-prehash")
         else if YESCRYPT_RW flag is set OR YESCRYPT_WORM flag is set
@@ -278,10 +323,10 @@ Copyright
         end if
 
         if YESCRYPT_RW flag is set then
-            sMix(N, R, T, P, B, Flags, ROM)
+            sMix(N, R, T, P, B, Flags, ROM, Password)
         else
             for i = 0 to P - 1 do
-                sMix(N, R, T, 1, B[i], Flags, ROM)
+                sMix(N, R, T, 1, B[i], Flags, ROM, Password)
             end
         end if
 
@@ -320,15 +365,17 @@ Copyright
         [ROM]   - An array of NROM blocks, where NROM is a power of two. May be
                   NULL.
 
+        sha256  - An array of 32 bytes.
+
     Output:
 
-        The Blocks parameter is modified in-place.
+        The Blocks and sha256 parameters are modified in-place.
 
     Preconditions:
 
     Steps:
 
-        Allocate P sboxes SBox[0], SBox[1], ..., SBox[P - 1].
+        Allocate P Sboxes SBox[0], SBox[1], ..., SBox[P - 1].
 
         n = N / P
 
@@ -343,7 +390,7 @@ Copyright
         n = n - (n % 2)
 
         Nloop_all = Nloop_all + (Nloop_all % 2)
-        Nloop_rw = Nloop_rw - (Nloop_rw % 2)
+        Nloop_rw = Nloop_rw + (Nloop_rw % 2)
 
         Allocate N blocks V[0], V[1], ..., V[N-1]
 
@@ -357,7 +404,11 @@ Copyright
             if YESCRYPT_RW flag is set
                 # Note: This call modifies the first two cells of Blocks[i], and
                 # that modification must be saved.
-                sMix1(1, First two cells of Blocks[i], SBYTES/128, SBox[i], Flags without YESCRYPT_RW, NULL, ROM)
+                sMix1(1, First two cells of Blocks[i], SBYTES/128, SBox[i].S, Flags without YESCRYPT_RW, NULL, ROM)
+
+                if i == 0 do
+                    sha255 = HMAC-SHA256(Blocks[i][2*r - 1], SHA256)
+                end
             else
                 SBox[i] = NULL
             end if
@@ -521,13 +572,13 @@ Copyright
         # Go back to thinking of cells as 16 words.
 
         i = (pwx_blocks - 1) * PWXWORDS / 16
-        salsa20_8(Block[i])
+        salsa20_r(Block[i], 2)
 
         for i = i + 1 to 2 * r - 1 do
             # TODO: Check this... I think this is right, and actually simpler.
             # (If it is, we don't need that extra array in the Ruby impl.)
             Block[i] = Block[i - 1] XOR Block[i]
-            salsa20_8(Block[i])
+            salsa20_r(Block[i], 2)
         end for
 
 5.6. pwxform
@@ -546,6 +597,10 @@ Copyright
 
     Steps:
 
+        S0 = Sbox.S0
+        S1 = Sbox.S1
+        S2 = Sbox.S2
+
         for i = 0 to PWXROUNDS - 1 do
             for j = 0 to PWXGATHER - 1 do
 
@@ -559,22 +614,27 @@ Copyright
                     lo = PWXBlock[2 * (j * PWXSIMPLE + k)]
                     hi = PWXBlock[2 * (j * PWXSIMPLE + k) + 1]
 
-                    - TODO: maybe we should define SBox as an array of 64-bit
-                      integers to simplify this..., but then we need to add
-                      a "cast" operation to our definition in the place where
-                      sboxes are created. Actually: We could just "cast" here,
-                      to contain all the complexity in this one function.
-
-                    s0 = Sbox[2 * (p0 * PWXSIMPLE + k)] + (SBox[2 * (p0 + PWXSIMPLE + k) + 1] * 2^32)
-                    s1 = Sbox[SWORDS/2 + 2 * (p1 * PWXSIMPLE + k)] + (Sbox[SWORDS/2 + 2 * (p1 * PWXSIMPLE + k) + 1] * 2^32)
+                    s0 = Sbox.S[S0 + 2 * (p0 * PWXSIMPLE + k)] + (Sbox.S[S0 + 2 * (p0 + PWXSIMPLE + k) + 1] * 2^32)
+                    s1 = Sbox.S[S1 + 2 * (p1 * PWXSIMPLE + k)] + (Sbox.S[S1 + 2 * (p1 * PWXSIMPLE + k) + 1] * 2^32)
 
                     result = (((hi * lo) + s0) XOR s1) % 2^64
-                    PWXBlock[2 * (j * PWXSIMPLE + k)] = result & 2^32
+                    PWXBlock[2 * (j * PWXSIMPLE + k)] = result % 2^32
                     PWXBlock[2 * (j * PWXSIMPLE + k)] = floor(result / 2^32)
+
+                    if i != 0 && i != PWXROUNDS - 1 do
+                        Sbox.S[S2 + 2 * Sbox.w] = result % 2^32
+                        Sbox.S[S2 + 2 * Sbox.w + 1] = floor(result / 2^32)
+                        Sbox.w = Sbox.w + 1
+                    end
                 end
 
             end for
         end for
+
+        Sbox.S0 = S2
+        Sbox.S1 = S0
+        Sbox.S2 = S1
+        sbox.w = sbox.w & (SMASK / 8)
 
 5.7. blockmix_salsa8
 
@@ -598,7 +658,7 @@ Copyright
 
         for i = 0 to 2 * r - 1 do
             X = X XOR Block[i]
-            salsa20_8(X)
+            salsa20_r(X, 8)
             if i % 2 == 0
                 Y[i/2] = X
             else
@@ -608,11 +668,12 @@ Copyright
 
         Block = Y
 
-5.8. sala20_8
+5.8. salsa20_r
 
     Input:
 
         Cell - A cell.
+        r    - Number of rounds.
 
     Output:
 
@@ -622,7 +683,7 @@ Copyright
 
     Steps:
 
-        This is the Salsa20 core reduced to 8 rounds with a SIMD unshuffle (like
+        This is the Salsa20 core reduced to r rounds with a SIMD unshuffle (like
         SIMDUnshuffle) pre-applied and a SIMD shuffle (like SIMDShuffle)
         post-applied. See [7] for more information.
 
