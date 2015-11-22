@@ -193,7 +193,7 @@ Copyright
     Yescrypt uses a data structure called an Sbox. An sbox is an array S of
     SWORDS words with three pointers (equivalently, indices) into it, called S0,
     S1, and S2, and an integer w. When initialized, S2 points to the beginning
-    of S, S1 points a third of the way into S (index SWORDS / 3), and S2 points
+    of S, S1 points a third of the way into S (index SWORDS / 3), and S0 points
     two-thirds of the way into S (index 2 * SWORDS / 3).
 
     Whenever a block or cell needs to be interpreted as a byte array, the words
