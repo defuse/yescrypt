@@ -70,6 +70,83 @@ case "salsa20_8":
     $result = Yescrypt::salsa20_core_binary($b, 8);
     echo $result;
     break;
+case "benchmark":
+    if (count($argv) < 4) {
+        die('Bad arguments to benchmark.');
+    }
+    $iteration_count = (int)$argv[2];
+    switch ($argv[3]) {
+    case 'yescrypt':
+        benchmarkYescrypt(
+            $iteration_count,
+            (int)$argv[4],      // N
+            (int)$argv[5],      // r
+            (int)$argv[6],      // p
+            (int)$argv[7],      // t
+            (int)$argv[8],      // g
+            (int)$argv[9],      // flags
+            (int)$argv[10]      // dkLen
+        );
+        break;
+    case 'pwxform':
+        benchmarkPwxform($iteration_count);
+        break;
+    case 'salsa20_8':
+        benchmarkSalsa20_8($iteration_count);
+        break;
+    }
+    break;
 default:
     die('bad function');
+}
+
+function benchmarkYescrypt($iteration_count, $N, $r, $p, $t, $g, $flags, $dkLen)
+{
+    $start = microtime(true);
+    for ($i = 0; $i < $iteration_count; $i++) {
+        Yescrypt::calculate("password", "salt", $N, $r, $p, $t, $g, $flags, $dkLen);
+    }
+    $totalTime = microtime(true) - $start;
+    if ($totalTime < 1.0) {
+        echo "Iteration count is too small to be accurate.";
+    } else {
+        $c_s = $iteration_count / $totalTime;
+        echo "$c_s c/s";
+    }
+}
+
+function benchmarkPwxform($iteration_count)
+{
+    // XXX: do this better
+    $pwxblock = str_repeat("\x00", YESCRYPT_PWXBYTES);
+    $sbox = new Sbox(str_repeat("\x00", YESCRYPT_SBYTES));
+
+    $start = microtime(true);
+    for ($i = 0; $i < $iteration_count; $i++) {
+        Yescrypt::pwxform($pwxblock, $sbox);
+    }
+    $totalTime = microtime(true) - $start;
+    if ($totalTime < 1.0) {
+        echo "Iteration count is too small to be accurate.";
+    } else {
+        $c_s = $iteration_count / $totalTime;
+        echo "$c_s c/s";
+    }
+}
+
+function benchmarkSalsa20_8($iteration_count)
+{
+    // XXX: do this better.
+    $cell = str_repeat("\x00", 64);
+    $start = microtime(true);
+    for ($i = 0; $i < $iteration_count; $i++) {
+        $cell = Yescrypt::salsa20_core_binary($cell, 8);
+    }
+    $totalTime = microtime(true) - $start;
+    if ($totalTime < 1.0) {
+        echo "Iteration count is too small to be accurate.";
+    } else {
+        $c_s = $iteration_count / $totalTime;
+        echo "$c_s c/s";
+    }
 }

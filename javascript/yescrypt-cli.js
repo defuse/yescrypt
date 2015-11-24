@@ -78,12 +78,107 @@ switch (argv[0]) {
             toNodeBuffer(cell)
         );
         break;
+    case 'benchmark':
+        if (argv.length < 3) {
+            console.log('Bad arguments to benchmark.');
+            process.exit(1);
+        }
+        var iteration_count = parseInt(argv[1]);
+        switch (argv[2]) {
+            case 'yescrypt':
+                benchmarkYescrypt(
+                    iteration_count,
+                    parseInt(argv[3]),          // N
+                    parseInt(argv[4]),          // r
+                    parseInt(argv[5]),          // p
+                    parseInt(argv[6]),          // t
+                    parseInt(argv[7]),          // g
+                    parseInt(argv[8]),          // flags
+                    parseInt(argv[9])           // dkLen
+                );
+                break;
+
+            case 'pwxform':
+                benchmarkPwxform(iteration_count);
+                break;
+
+            case 'salsa20_8':
+                benchmarkSalsa20_8(iteration_count);
+                break;
+        }
+        break;
     default:
         console.log('Bad function.');
         process.exit(1);
 }
 
 process.exit(0);
+
+function benchmarkYescrypt(iteration_count, N, r, p, t, g, flags, dkLen) {
+    var start = new Date;
+    for (var i = 0; i < iteration_count; i++) {
+        // XXX: at least the password should change in each iteration
+        yescrypt.calculate("password", "salt", N, r, p, t, g, flags, dkLen);
+    }
+    var totalTime = (new Date) - start;
+    if (totalTime < 1000) {
+        console.log("Iteration count is too small to be accurate.");
+    } else {
+        console.log((iteration_count/totalTime*1000) + " c/s");
+    }
+}
+
+function benchmarkPwxform(iteration_count) {
+    var pwxblock = new Uint32Array(yescrypt.PWXWORDS);
+    var sbox = new Uint32Array(yescrypt.SWORDS);
+
+    // XXX: make these better
+    for (var i = 0; i < yescrypt.PWXWORDS; i++) {
+        pwxblock[i] = i;
+    }
+    for (var i = 0; i < yescrypt.SWORDS; i++) {
+        sbox[i] = i;
+    }
+
+    sbox_obj = {
+        S: sbox,
+        S2: 0,
+        S1: sbox.length / 3,
+        S0: (sbox.length / 3) * 2,
+        w: 0
+    }
+
+    var start = new Date;
+    for (var i = 0; i < iteration_count; i++) {
+        yescrypt.pwxform(pwxblock, sbox_obj);
+    }
+    var totalTime = (new Date) - start;
+    if (totalTime < 1000) {
+        console.log("Iteration count is too small to be accurate.");
+    } else {
+        console.log((iteration_count/totalTime*1000) + " c/s");
+    }
+}
+
+function benchmarkSalsa20_8(iteration_count) {
+    var cell = new Uint32Array(16);
+    // XXX: make this better
+    for (var i = 0; i < 16; i++) {
+        cell[i] = i;
+    }
+
+    var start = new Date;
+    for (var i = 0; i < iteration_count; i++) {
+        yescrypt.salsa20_8(cell);
+    }
+
+    var totalTime = (new Date) - start;
+    if (totalTime < 1000) {
+        console.log("Iteration count is too small to be accurate.");
+    } else {
+        console.log((iteration_count/totalTime*1000) + " c/s");
+    }
+}
 
 function hexToUint8Array(hex_string) {
 
@@ -97,7 +192,7 @@ function hexToUint8Array(hex_string) {
     }
 
     return bytes;
-};
+}
 
 function toNodeBuffer(uint8Array) {
     var buffer = new Buffer(uint8Array.byteLength);
