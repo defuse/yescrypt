@@ -98,3 +98,10 @@ time, and secondly, that each language "knows best" how to benchmark itself.
 The rationale for not letting implementations decide the iteration count for
 themselves is that the benchmark user is the one who decides how long they want
 to run the benchmarks for and what kind of accuracy they expect.
+
+Funding
+=======
+
+Taylor's work on this project was funded by [Google Summer of
+Code](https://developers.google.com/open-source/gsoc/) and by 20% "fun friday"
+time at [Zcash](https://z.cash).
