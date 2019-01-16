@@ -4,7 +4,9 @@ yescrypt
 [![Build Status](https://travis-ci.org/defuse/yescrypt.svg?branch=master)](https://travis-ci.org/defuse/yescrypt)
 
 This repository holds my implementations of the yescrypt algorithm done for
-Google Summer of Code 2015.
+Google Summer of Code 2015. *WARNING:* This code has not yet been brought up to
+date with the latest version of yescrypt, yescrypt 1.0. This is being tracked in
+[GitHub Issue #32](https://github.com/defuse/yescrypt/issues/32).
 
 Documentation
 ---------------
