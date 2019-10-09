@@ -6,9 +6,11 @@ php:
 
 install:
     - npm install sjcl
+    - sudo pip install pbkdf2
 
 script:
     - ./test-php.sh
     - ./test-ruby.sh
     - ./test-javascript.sh
+    - ./test-python.sh
 
